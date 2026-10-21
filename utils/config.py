@@ -71,7 +71,7 @@ BotName = NAME
 
 # ── Behaviour ────────────────────────────────────────────
 INACTIVITY_TIMEOUT = _env_int("INACTIVITY_TIMEOUT", 120) or 120
-KEEP_ALIVE = _env_bool("KEEP_ALIVE", False)
+KEEP_ALIVE = _env_bool("KEEP_ALIVE", False) or bool(os.getenv("PORT")) or bool(os.getenv("RENDER"))
 KEEP_ALIVE_PORT = _env_int("PORT", 8080) or 8080
 
 # ── FFmpeg / yt-dlp playback ─────────────────────────────
