@@ -38,6 +38,8 @@ import os
 from dataclasses import dataclass, field
 from typing import Dict, Iterable, List, Optional, Tuple
 
+from utils import emojis as E
+
 log = logging.getLogger("testingmusic.remix")
 
 SAMPLE_RATE = 48000       # what discord.py asks FFmpeg for (48 kHz stereo s16le)
@@ -64,25 +66,25 @@ class Effect:
 
 _EFFECT_LIST: List[Effect] = [
     # row 0 - quality + space
-    Effect("crystal",    "Crystal",  "\U0001f48e", "Crystal HD",   "",      "clearer vocals + air, less mud"),
-    Effect("spatial",    "Spatial",  "\U0001f3a7", "Spatial",      "space", "wide, slowly moving stage (best on headphones)"),
-    Effect("eight_d",    "8D",       "\U0001f300", "8D",           "space", "sound circles around your head"),
-    Effect("atmos",      "Atmos",    "\U0001f30c", "Atmos style",  "space", "big 3D / surround feel (simulated)"),
-    Effect("lofi",       "Lofi",     "\U0001f4fb", "Lofi",         "",      "warm, soft, tape wobble"),
+    Effect("crystal",    "Crystal",  getattr(E, "REMIX_CRYSTAL", "\U0001f48e"), "Crystal HD",   "",      "clearer vocals + air, less mud"),
+    Effect("spatial",    "Spatial",  getattr(E, "VOICE", "\U0001f3a7"), "Spatial",      "space", "wide, slowly moving stage (best on headphones)"),
+    Effect("eight_d",    "8D",       getattr(E, "REMIX_8D", "\U0001f300"), "8D",           "space", "sound circles around your head"),
+    Effect("atmos",      "Atmos",    getattr(E, "MUSIC", "\U0001f30c"), "Atmos style",  "space", "big 3D / surround feel (simulated)"),
+    Effect("lofi",       "Lofi",     getattr(E, "REMIX_LOFI", "\U0001f4fb"), "Lofi",         "",      "warm, soft, tape wobble"),
     # row 1 - speed / pitch / pulse
-    Effect("speed",      "Speed",    "\u26a1",     "Speed",        "tempo", "faster, same pitch"),
-    Effect("slow",       "Slow",     "\U0001f40c", "Slow",         "tempo", "slower, same pitch"),
-    Effect("pitch_up",   "High",     "\U0001f43f\ufe0f", "Pitch up",   "pitch", "higher pitch, same speed"),
-    Effect("pitch_down", "Low",      "\U0001f479", "Pitch down",   "pitch", "lower pitch, same speed"),
-    Effect("stutter",    "Stut",     "\U0001f504", "Stutter",      "",      "choppy on/off pulse"),
+    Effect("speed",      "Speed",    getattr(E, "BTN_FORWARD", "\u26a1"),     "Speed",        "tempo", "faster, same pitch"),
+    Effect("slow",       "Slow",     getattr(E, "BTN_REWIND", "\U0001f40c"), "Slow",         "tempo", "slower, same pitch"),
+    Effect("pitch_up",   "High",     getattr(E, "BTN_SKIP", "\U0001f43f\ufe0f"), "Pitch up",   "pitch", "higher pitch, same speed"),
+    Effect("pitch_down", "Low",      getattr(E, "BTN_PREVIOUS", "\U0001f479"), "Pitch down",   "pitch", "lower pitch, same speed"),
+    Effect("stutter",    "Stut",     getattr(E, "BTN_LOOP", "\U0001f504"), "Stutter",      "",      "choppy on/off pulse"),
     # row 2 - (Bass + Vol are steppers, drawn by the cog) + filters + echo
-    Effect("lpf",        "LPF",      "\U0001f30a", "Low-pass",     "",      "muffled, keeps the lows"),
-    Effect("hpf",        "HPF",      "\U0001f52a", "High-pass",    "",      "thin, keeps the highs"),
-    Effect("echo",       "Echo",     "\U0001f50a", "Echo",         "echo",  "repeating tail"),
+    Effect("lpf",        "LPF",      getattr(E, "SOUNDCLOUD", "\U0001f30a"), "Low-pass",     "",      "muffled, keeps the lows"),
+    Effect("hpf",        "HPF",      getattr(E, "SPOTIFY", "\U0001f52a"), "High-pass",    "",      "thin, keeps the highs"),
+    Effect("echo",       "Echo",     getattr(E, "VOICE", "\U0001f50a"), "Echo",         "echo",  "repeating tail"),
     # row 3
-    Effect("reverb",     "Reverb",   "\U0001f3db\ufe0f", "Reverb", "echo",  "small room space"),
-    Effect("deep",       "Deep",     "\U0001f4a5", "Deep bass",    "",      "extra sub-bass under everything"),
-    Effect("karaoke",    "Karaoke",  "\U0001f3a4", "Karaoke",      "",      "cuts the centre vocals"),
+    Effect("reverb",     "Reverb",   getattr(E, "MUSIC", "\U0001f3db\ufe0f"), "Reverb", "echo",  "small room space"),
+    Effect("deep",       "Deep",     getattr(E, "REMIX_BASS", "\U0001f4a5"), "Deep bass",    "",      "extra sub-bass under everything"),
+    Effect("karaoke",    "Karaoke",  getattr(E, "REMIX_KARAOKE", "\U0001f3a4"), "Karaoke",      "",      "cuts the centre vocals"),
 ]
 EFFECTS: Dict[str, Effect] = {e.key: e for e in _EFFECT_LIST}
 

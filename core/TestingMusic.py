@@ -9,7 +9,7 @@ from typing import Dict, List, Optional
 import aiohttp
 import discord
 from colorama import Fore, Style, init
-from discord.ext import commands
+from discord.ext import commands, tasks
 
 from utils import config
 from utils.Tools import getConfig, np_list, np_remove, np_set, setup_db
@@ -84,6 +84,10 @@ class TestingMusic(commands.AutoShardedBot):
         print(Fore.GREEN + Style.BRIGHT + "*" * 20)
 
     async def close(self) -> None:
+        if hasattr(self, "rotate_presence") and self.rotate_presence.is_running():
+            self.rotate_presence.stop()
+        if hasattr(self, "rotate_bio") and self.rotate_bio.is_running():
+            self.rotate_bio.stop()
         session = getattr(self, "session", None)
         if session is not None and not session.closed:
             await session.close()
@@ -93,6 +97,14 @@ class TestingMusic(commands.AutoShardedBot):
         if self._ready_announced:
             return
         self._ready_announced = True
+
+        if not self.rotate_presence.is_running():
+            self.rotate_presence.change_interval(seconds=config.STATUS_INTERVAL)
+            self.rotate_presence.start()
+        if not self.rotate_bio.is_running():
+            self.rotate_bio.change_interval(seconds=config.BIO_INTERVAL)
+            self.rotate_bio.start()
+
         print(Fore.MAGENTA + Style.BRIGHT + "=" * 44)
         print(Fore.MAGENTA + Style.BRIGHT + f"   {config.NAME}".center(44))
         print(Fore.MAGENTA + Style.BRIGHT + "=" * 44)
@@ -108,6 +120,79 @@ class TestingMusic(commands.AutoShardedBot):
         print(Fore.CYAN + Style.BRIGHT + "Invite link (open it in your browser to add the bot to a server):")
         print(Fore.CYAN + Style.BRIGHT + self.invite_url)
         print()
+
+    # ── dynamic presence & bio rotation ─────────────────
+    @tasks.loop(seconds=30)
+    async def rotate_presence(self) -> None:
+        if not self.is_ready():
+            return
+        self._presence_index = getattr(self, "_presence_index", 0) + 1
+        guild_count = len(self.guilds)
+        user_count = sum(g.member_count or 0 for g in self.guilds)
+        prefix = config.DEFAULT_PREFIX
+
+        activities = [
+            discord.Activity(
+                type=discord.ActivityType.listening,
+                name=f"{prefix}play | Shizu Music \U0001f3b5",
+            ),
+            discord.Activity(
+                type=discord.ActivityType.playing,
+                name="24/7 High-Quality Audio \U0001f3a7",
+            ),
+            discord.Activity(
+                type=discord.ActivityType.watching,
+                name=f"{guild_count} Servers \u2022 {user_count} Users \U0001f310",
+            ),
+            discord.Activity(
+                type=discord.ActivityType.listening,
+                name="Spotify \u2022 YouTube \u2022 SoundCloud \U0001f3b6",
+            ),
+            discord.Activity(
+                type=discord.ActivityType.playing,
+                name=f"{prefix}help | Studio Quality \U0001f43e",
+            ),
+        ]
+        chosen = activities[self._presence_index % len(activities)]
+        try:
+            await self.change_presence(status=discord.Status.dnd, activity=chosen)
+        except Exception:
+            pass
+
+    @tasks.loop(seconds=600)
+    async def rotate_bio(self) -> None:
+        if not self.is_ready() or not self.application_id:
+            return
+        self._bio_index = getattr(self, "_bio_index", 0) + 1
+        prefix = config.DEFAULT_PREFIX
+        bios = [
+            f"\U0001f43e SHIZU MUSIC \u2014 24/7 High-Fidelity Discord Music Bot. Crystal-clear audio, rich audio FX & zero lag. Use {prefix}help to get started!",
+            f"\U0001f3b5 Premium Discord Audio Streaming | Supporting YouTube, Spotify, SoundCloud & JioSaavn with interactive player controls.",
+            f"\U0001f3a7 Built for music lovers. Interactive controls, Remix audio effects (8D, Bassboost, Lofi, Atmos) & 24/7 autoplay mode. Type {prefix}play to begin!",
+            f"\u2728 Shizu Music | Developed by viper & prashu. Serving uninterrupted beats 24/7 across Discord servers.",
+        ]
+        chosen_bio = bios[self._bio_index % len(bios)]
+        headers = {"Authorization": f"Bot {config.TOKEN}", "Content-Type": "application/json"}
+        try:
+            session = getattr(self, "session", None)
+            if session and not session.closed:
+                # Update application About Me description
+                async with session.patch(
+                    "https://discord.com/api/v10/applications/@me",
+                    headers=headers,
+                    json={"description": chosen_bio}
+                ) as r:
+                    if r.status == 200:
+                        log.debug("Rotated application bio successfully")
+                # Also apply fixed profile accent_color
+                async with session.patch(
+                    "https://discord.com/api/v10/users/@me",
+                    headers=headers,
+                    json={"accent_color": config.BOT_COLOR}
+                ) as r:
+                    pass
+        except Exception:
+            log.debug("Failed to rotate bio", exc_info=True)
 
     # ── helpers ─────────────────────────────────────────
     @property

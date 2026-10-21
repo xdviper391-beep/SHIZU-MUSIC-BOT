@@ -44,9 +44,9 @@ PLAYER_SLOTS: Tuple[Tuple[str, str], ...] = (
 
 # Remix console: every effect (emoji comes from utils/remix.py) + the four special buttons.
 _CONSOLE_EXTRAS: Tuple[Tuple[str, str, str], ...] = (
-    ("bass", "Bass", "\U0001f5e1\ufe0f"),
-    ("vol", "Vol", "\U0001f4e2"),
-    ("clear", "Clear FX", "\U0001f9f9"),
+    ("bass", "Bass", getattr(E, "REMIX_BASS", "\U0001f5e1\ufe0f")),
+    ("vol", "Vol", getattr(E, "REMIX_VOL", "\U0001f4e2")),
+    ("clear", "Clear FX", getattr(E, "REMIX_CLEAR", "\U0001f9f9")),
     ("help", "How it works", "\u2139\ufe0f"),
 )
 REMIX_SLOTS: Tuple[Tuple[str, str], ...] = tuple(
@@ -66,8 +66,9 @@ _PLAYER_CONSTANTS: Dict[str, str] = {
     "shuffle": "BTN_SHUFFLE",
     "loop": "BTN_LOOP",
     "autoplay": "BTN_AUTOPLAY",
+    "remix": "REMIX_BTN",
 }
-_PLAYER_PLAIN: Dict[str, str] = {"remix": "\U0001f39b\ufe0f", "others": "\u2699\ufe0f"}
+_PLAYER_PLAIN: Dict[str, str] = {"remix": getattr(E, "REMIX_BTN", "\U0001f39b\ufe0f"), "others": "\u2699\ufe0f"}
 _CONSOLE_PLAIN: Dict[str, str] = {slot: emoji for slot, _, emoji in _CONSOLE_EXTRAS}
 
 ALL_SLOTS = {slot for slot, _ in PLAYER_SLOTS} | {slot for slot, _ in REMIX_SLOTS}

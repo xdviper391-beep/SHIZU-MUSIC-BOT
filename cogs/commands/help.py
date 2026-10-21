@@ -12,9 +12,10 @@ from utils import help as vhelp
 from utils import Paginator, DescriptionEmbedPaginator, FieldPagePaginator, TextPaginator
 import asyncio
 from utils import emojis as E
+from utils import config
 from utils.Tools import *
 
-color = 0x000000
+color = config.EMBED_COLOR
 
 class HelpCommand(commands.HelpCommand):
 
@@ -100,7 +101,7 @@ class HelpCommand(commands.HelpCommand):
 ])
     
     embed = discord.Embed(
-      title="", color=0x000000)
+      title="", color=config.EMBED_COLOR)
 
     invite = discord.utils.oauth_url(
       self.context.bot.user.id,

@@ -129,7 +129,9 @@ def md_link(title: str, uri: Optional[str], limit: int = 80) -> str:
     return f"[{clean}]({uri})" if uri else clean
 
 
-def embed_of(text: str, color: int = 0x000000) -> discord.Embed:
+def embed_of(text: str, color: Optional[int] = None) -> discord.Embed:
+    if color is None or color == 0x000000:
+        color = config.EMBED_COLOR
     return discord.Embed(description=text, color=color)
 
 

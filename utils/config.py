@@ -95,3 +95,24 @@ LAVALINK_SECURE = _env_bool("LAVALINK_SECURE", True)
 # ── Optional Spotify fallback ────────────────────────────
 SPOTIFY_CLIENT_ID = _env("SPOTIFY_CLIENT_ID")
 SPOTIFY_CLIENT_SECRET = _env("SPOTIFY_CLIENT_SECRET")
+
+# Profile Theme & Embed Color
+def _get_color() -> int:
+    val = _env('BOT_COLOR')
+    if not val:
+        return 0x8A2BE2
+    try:
+        if val.startswith('#'):
+            return int(val[1:], 16)
+        if val.startswith('0x'):
+            return int(val, 16)
+        return int(val)
+    except ValueError:
+        return 0x8A2BE2
+
+BOT_COLOR = _get_color()
+EMBED_COLOR = BOT_COLOR
+
+# Dynamic Presence & Bio Rotation
+STATUS_INTERVAL = _env_int('STATUS_ROTATION_INTERVAL', 30) or 30
+BIO_INTERVAL = _env_int('BIO_ROTATION_INTERVAL', 600) or 600
