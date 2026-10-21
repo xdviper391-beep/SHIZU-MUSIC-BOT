@@ -86,6 +86,12 @@ if not FFMPEG_PATH and not shutil.which("ffmpeg"):
         pass
 YTDL_COOKIEFILE = _env("YTDL_COOKIEFILE")    # optional cookies.txt (YouTube bot checks / age-restricted)
 
+# ── Public Lavalink Node ─────────────────────────────────
+LAVALINK_HOST = _env("LAVALINK_HOST")
+LAVALINK_PORT = _env_int("LAVALINK_PORT", 443) or 443
+LAVALINK_PASSWORD = _env("LAVALINK_PASSWORD")
+LAVALINK_SECURE = _env_bool("LAVALINK_SECURE", True)
+
 # ── Optional Spotify fallback ────────────────────────────
 SPOTIFY_CLIENT_ID = _env("SPOTIFY_CLIENT_ID")
 SPOTIFY_CLIENT_SECRET = _env("SPOTIFY_CLIENT_SECRET")
