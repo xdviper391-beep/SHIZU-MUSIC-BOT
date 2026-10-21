@@ -215,4 +215,5 @@ See `LICENSE.txt` for the original license terms.
 3. Start the server and read the console. "Loaded & Online!" means it works.
 #   S H I Z U - M U S I C - B O T  
  #   S H I Z U - M U S I C - B O T  
+ #   S H I Z U - M U S I C - B O T  
  
