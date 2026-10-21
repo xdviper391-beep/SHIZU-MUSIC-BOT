@@ -1735,6 +1735,7 @@ class Music(commands.Cog):
     async def retire_card(self, player: MusicPlayer) -> None:
         """Session over: keep the last card in the chat but take its buttons off."""
         card, player.card = player.card, None
+        player.pending_note = None
         await self._drop_card(card, delete=False)
 
     # ── player events (called by MusicPlayer) ───────────
@@ -1883,7 +1884,7 @@ class Music(commands.Cog):
             added = f"{E.ADD} Added playlist **{shorten(playlist_name, 100)}** with **{len(tracks)} songs** to the queue."
         else:
             added = f"{E.ADD} Added {md_link(tracks[0].title, tracks[0].uri)} to the queue."
-        await self.note(ctx, added, next_card=vc.card is None)  # idle player: it goes on the card about to be posted
+        await self.note(ctx, added, next_card=(vc.card is None or vc.current is None))  # idle player: it goes on the card about to be posted
 
         try:
             await vc.enqueue(tracks)
@@ -1924,7 +1925,7 @@ class Music(commands.Cog):
             return
 
         added = f"{E.ADD} Added **{len(tracks)}** track(s) from **{shorten(label, 100)}** to the queue."
-        await self.note(ctx, added, next_card=vc.card is None)
+        await self.note(ctx, added, next_card=(vc.card is None or vc.current is None))
         try:
             await vc.enqueue(tracks)
         except MusicError as exc:
@@ -2150,11 +2151,12 @@ class Music(commands.Cog):
     @ignore_check()
     @commands.cooldown(1, 3, commands.BucketType.user)
     async def stop(self, ctx: commands.Context):
-        vc = await self.control_player(ctx)
+        vc = await self.control_player(ctx, need_playing=False, missing="I'm not connected to any voice channel.")
         if vc is None:
             return
         await set_vc_status(vc.channel, None)
         vc.queue.clear()
+        vc.pending_note = None
         owner_text, trigger_text, is_owner = format_session_users(vc, ctx.author, ctx.guild)
         vc._handled_disconnect = True
         self.forget_guild(ctx.guild.id)
