@@ -15,12 +15,13 @@ from .commands.remix import Remix
 
 # ---------- Events ----------
 from .events.Errors import Errors
+from .events.GuildEvents import GuildEvents
 
 init(autoreset=True)
 
 
 async def setup(bot: ShizuMusic):
-    cogs_to_load = [Help, Music, FilterCog, Remix, Owner, EditEmojis, Prefix, Errors]  # Music first: Remix / filters use its player
+    cogs_to_load = [Help, Music, FilterCog, Remix, Owner, EditEmojis, Prefix, Errors, GuildEvents]  # Music first: Remix / filters use its player
 
     for cog in cogs_to_load:
         await bot.add_cog(cog(bot))

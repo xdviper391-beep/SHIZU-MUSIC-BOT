@@ -32,6 +32,7 @@ class ShizuMusic(commands.AutoShardedBot):
         intents = discord.Intents.default()
         intents.message_content = True
         intents.voice_states = True
+        intents.moderation = True
 
         super().__init__(
             command_prefix=self.get_prefix,

@@ -116,3 +116,12 @@ EMBED_COLOR = BOT_COLOR
 # Dynamic Presence & Bio Rotation
 STATUS_INTERVAL = _env_int('STATUS_ROTATION_INTERVAL', 30) or 30
 BIO_INTERVAL = _env_int('BIO_ROTATION_INTERVAL', 600) or 600
+
+# ── Server Join/Removal Notifications & Feedback ─────────
+SUPPORT_URL = _env("SUPPORT_URL") or "https://discord.gg/"
+REVIEW_URL = _env("REVIEW_URL") or "https://top.gg/bot/1560322217374388246"
+INVITE_URL = _env("INVITE_URL")
+ENABLE_JOIN_DM = _env_bool("ENABLE_JOIN_DM", True)
+ENABLE_REMOVE_DM = _env_bool("ENABLE_REMOVE_DM", True)
+ENABLE_FEEDBACK_DM = _env_bool("ENABLE_FEEDBACK_DM", True)
+FEEDBACK_COOLDOWN = _env_int("FEEDBACK_COOLDOWN", 86400) or 86400
