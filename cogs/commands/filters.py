@@ -5,6 +5,8 @@ from typing import Optional
 import discord
 from discord.ext import commands
 
+from utils import config
+from utils import emojis as E
 from utils.remix import PRESETS, RemixError, get_state, set_preset
 from utils.session import can_control, denied_text
 from utils.Tools import blacklist_check, ignore_check
@@ -81,11 +83,11 @@ class FilterCog(commands.Cog):
     async def apply_filter(self, ctx: commands.Context, filter_name: str):
         player = self._player(ctx)
         if not player or not player.playing:
-            await ctx.send("I'm not playing anything.")
+            await ctx.send(embed=discord.Embed(description=f"{E.WARNING} I'm not playing anything.", color=0xFF0000))
             return
 
         if ctx.author.voice is None or ctx.author.voice.channel != player.channel:
-            await ctx.send("You need to be in the same voice channel as me.")
+            await ctx.send(embed=discord.Embed(description=f"{E.WARNING} You need to be in the same voice channel as me.", color=0xFF0000))
             return
 
         if not can_control(player, ctx.author.id):
@@ -95,13 +97,13 @@ class FilterCog(commands.Cog):
         try:
             ok, note = await set_preset(player, filter_name)
         except RemixError as exc:  # carries a user-safe message
-            await ctx.send(embed=discord.Embed(description=f"{exc}", color=0xFF0000))
+            await ctx.send(embed=discord.Embed(description=f"{E.WARNING} {exc}", color=0xFF0000))
             return
         if not ok:
-            await ctx.send(embed=discord.Embed(description=note, color=0xFF0000))
+            await ctx.send(embed=discord.Embed(description=f"{E.WARNING} {note}", color=0xFF0000))
             return
-        text = f"Filter set to **{filter_name}**." + (f"\n{note}" if note else "")
-        await self._say(ctx, text, 0x2ECC71, ack=False)  # the filter menu already answered a slash command
+        text = f"{E.TICK} Filter set to **{filter_name}**." + (f"\n{note}" if note else "")
+        await self._say(ctx, text, 0x1DB954, ack=False)  # the filter menu already answered a slash command
 
     async def _say(self, ctx: commands.Context, text: str, color: int, **kwargs) -> None:
         """The reply goes inside the player card (one message); a normal reply if there is no card."""
@@ -116,7 +118,11 @@ class FilterCog(commands.Cog):
     @ignore_check()
     @commands.cooldown(1, 3, commands.BucketType.user)
     async def filter(self, ctx: commands.Context):
-        await ctx.send("Use `filter enable` to enable a filter or `filter disable` to disable the current filter.")
+        prefix = ctx.clean_prefix
+        await ctx.send(embed=discord.Embed(
+            description=f"{E.MUSIC} Use `{prefix}filter enable` to enable a filter or `{prefix}filter disable` to disable the current filter.",
+            color=0x5865F2,
+        ))
 
     @filter.command(help="Enable a filter.")
     @blacklist_check()
@@ -125,11 +131,11 @@ class FilterCog(commands.Cog):
     async def enable(self, ctx: commands.Context):
         player = self._player(ctx)
         if not player or not player.playing:
-            await ctx.send("I'm not connected to a voice channel.")
+            await ctx.send(embed=discord.Embed(description=f"{E.WARNING} I'm not connected to a voice channel.", color=0xFF0000))
             return
 
         if ctx.author.voice is None or ctx.author.voice.channel != player.channel:
-            await ctx.send("You need to be in the same voice channel as me.")
+            await ctx.send(embed=discord.Embed(description=f"{E.WARNING} You need to be in the same voice channel as me.", color=0xFF0000))
             return
 
         if not can_control(player, ctx.author.id):
@@ -144,8 +150,9 @@ class FilterCog(commands.Cog):
         view = FilterSelect(self, ctx, filter_options)
         state = get_state(player)
         current_filter = state.label or "None"
-        embed = discord.Embed(title="Enable Filter", description="Choose a filter to apply:", color=discord.Color.blue())
-        embed.add_field(name="Current Filter", value=current_filter, inline=False)
+        embed = discord.Embed(title=f"{E.MUSIC} Enable Audio Filter", description="Choose a filter from the menu below to apply:", color=0x5865F2)
+        embed.add_field(name="Current Filter", value=f"`{current_filter}`", inline=False)
+        embed.set_footer(text=f"Thanks for choosing {config.NAME}!")
         view.message = await ctx.send(embed=embed, view=view)
 
     @filter.command(help="Disable the current filter.")
@@ -155,11 +162,11 @@ class FilterCog(commands.Cog):
     async def disable(self, ctx: commands.Context):
         player = self._player(ctx)
         if not player or not player.playing:
-            await ctx.send("I'm not connected to a voice channel.")
+            await ctx.send(embed=discord.Embed(description=f"{E.WARNING} I'm not connected to a voice channel.", color=0xFF0000))
             return
 
         if ctx.author.voice is None or ctx.author.voice.channel != player.channel:
-            await ctx.send("You need to be in the same voice channel as me.")
+            await ctx.send(embed=discord.Embed(description=f"{E.WARNING} You need to be in the same voice channel as me.", color=0xFF0000))
             return
 
         if not can_control(player, ctx.author.id):
@@ -169,9 +176,9 @@ class FilterCog(commands.Cog):
         try:
             await set_preset(player, "off")
         except RemixError as exc:
-            await ctx.send(embed=discord.Embed(description=f"{exc}", color=0xFF0000))
+            await ctx.send(embed=discord.Embed(description=f"{E.WARNING} {exc}", color=0xFF0000))
             return
-        await self._say(ctx, "Filter disabled.", 0xE74C3C)
+        await self._say(ctx, f"{E.TICK} Filter disabled.", 0x1DB954)
 
 
 """

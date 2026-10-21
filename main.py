@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import os
+import signal
 import sys
 from threading import Thread
 
@@ -51,6 +52,16 @@ async def main() -> None:
         keep_alive()
 
     bot = TestingMusic()
+    try:
+        loop = asyncio.get_running_loop()
+        for sig in (signal.SIGINT, signal.SIGTERM):
+            try:
+                loop.add_signal_handler(sig, lambda: asyncio.create_task(bot.close()))
+            except (NotImplementedError, AttributeError):
+                pass
+    except Exception:
+        pass
+
     async with bot:
         await bot.start(config.TOKEN)
 

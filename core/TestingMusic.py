@@ -83,7 +83,107 @@ class TestingMusic(commands.AutoShardedBot):
                 log.exception("Failed to load extension %s", extension)
         print(Fore.GREEN + Style.BRIGHT + "*" * 20)
 
+    async def announce_offline(self) -> None:
+        """When bot goes offline: delete active UI player cards and post offline message in recent music channels."""
+        music_cog = self.get_cog("Music")
+        for vc in list(self.voice_clients):
+            if music_cog is not None and getattr(vc, "card", None) is not None:
+                try:
+                    await music_cog._drop_card(vc.card, delete=True)
+                    vc.card = None
+                except Exception:
+                    pass
+
+        from utils import emojis as E
+        from utils.state import get_all_guild_states, set_offline_msg
+
+        guild_states = get_all_guild_states()
+        for gid_str, gdata in guild_states.items():
+            channel_id = gdata.get("channel_id")
+            if not channel_id:
+                continue
+            channel = self.get_channel(channel_id)
+            if channel is None:
+                try:
+                    channel = await self.fetch_channel(channel_id)
+                except Exception:
+                    channel = None
+            if channel is None or not getattr(channel, "guild", None):
+                continue
+            me = channel.guild.me or (await channel.guild.fetch_member(self.user.id) if self.user else None)
+            if me and not channel.permissions_for(me).send_messages:
+                continue
+
+            embed = discord.Embed(
+                description=f"{E.OFFLINE} **{config.NAME} is going offline for maintenance / restart.**\n"
+                            f"Music session has been paused. I will be back online shortly!",
+                color=0xFF0000,
+            )
+            embed.set_author(name=f"{config.NAME} • Offline", icon_url=self.user.display_avatar.url if self.user else None)
+            embed.set_footer(text=f"Thanks for choosing {config.NAME}!")
+            try:
+                msg = await channel.send(embed=embed)
+                set_offline_msg(channel.guild.id, channel.id, msg.id)
+            except Exception:
+                log.warning("Could not send offline message in channel %s", channel_id, exc_info=True)
+
+    async def announce_online(self) -> None:
+        """When bot comes online: update/post online message in recent music requested channels."""
+        from utils import emojis as E
+        from utils.state import get_all_guild_states, clear_offline_msg
+
+        guild_states = get_all_guild_states()
+        prefix = config.DEFAULT_PREFIX
+
+        for gid_str, gdata in list(guild_states.items()):
+            channel_id = gdata.get("channel_id")
+            offline_msg_id = gdata.get("offline_msg_id")
+            if not channel_id:
+                continue
+            channel = self.get_channel(channel_id)
+            if channel is None:
+                try:
+                    channel = await self.fetch_channel(channel_id)
+                except Exception:
+                    channel = None
+            if channel is None or not getattr(channel, "guild", None):
+                continue
+            me = channel.guild.me or (await channel.guild.fetch_member(self.user.id) if self.user else None)
+            if me and not channel.permissions_for(me).send_messages:
+                continue
+
+            embed = discord.Embed(
+                description=f"{E.ONLINE} **{config.NAME} is now online & ready to play!**\n"
+                            f"Use `/play <song>` or `{prefix}play <song>` to start music.",
+                color=0x1DB954,
+            )
+            embed.set_author(name=f"{config.NAME} • Online", icon_url=self.user.display_avatar.url if self.user else None)
+            embed.set_footer(text=f"Thanks for choosing {config.NAME}!")
+
+            handled = False
+            if offline_msg_id:
+                try:
+                    msg = await channel.fetch_message(offline_msg_id)
+                    await msg.edit(embed=embed)
+                    handled = True
+                except Exception:
+                    handled = False
+
+            if not handled and offline_msg_id:
+                try:
+                    await channel.send(embed=embed)
+                except Exception:
+                    pass
+
+            clear_offline_msg(channel.guild.id)
+
     async def close(self) -> None:
+        if not getattr(self, "_closing_handled", False):
+            self._closing_handled = True
+            try:
+                await self.announce_offline()
+            except Exception:
+                log.warning("Failed to announce offline", exc_info=True)
         if hasattr(self, "rotate_presence") and self.rotate_presence.is_running():
             self.rotate_presence.stop()
         if hasattr(self, "rotate_bio") and self.rotate_bio.is_running():
@@ -97,6 +197,11 @@ class TestingMusic(commands.AutoShardedBot):
         if self._ready_announced:
             return
         self._ready_announced = True
+
+        try:
+            await self.announce_online()
+        except Exception:
+            log.warning("Failed to announce online", exc_info=True)
 
         if not self.rotate_presence.is_running():
             self.rotate_presence.change_interval(seconds=config.STATUS_INTERVAL)

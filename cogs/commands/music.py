@@ -522,6 +522,7 @@ class MusicPlayer(discord.VoiceClient):
         self.remix_state = None                    # utils.remix.RemixState, created on first use (get_state)
         self.session_owner_id: Optional[int] = None
         self.transferred: bool = False
+        self._handled_disconnect: bool = False
         self.owner_absent_since: Optional[float] = None
         self.stay: bool = False                          # 24/7 mode: never leave, keep playing via autoplay
         self.awaiting_owner: bool = False                # owner left an empty channel: waiting for Continue / Stop
@@ -1344,10 +1345,12 @@ class Music(commands.Cog):
             return
         view = ContinueView(self, player, owner_id)
         embed = embed_of(
-            f"{E.WARNING} <@{owner_id}> YOU LEFT THE VOICE CHANNEL AND NO ONE IS LISTENING. "
-            "DO YOU WANT TO CONTINUE THE MUSIC SESSION?",
+            f"{E.WARNING} <@{owner_id}> You left the voice channel and no one is listening. "
+            "Do you want to continue the music session?",
             0xFF0000,
         )
+        embed.set_author(name="Session Inactive", icon_url=self.client.user.display_avatar.url)
+        embed.set_footer(text=f"Thanks for choosing {config.NAME}!")
         try:
             view.message = await ctx.channel.send(
                 embed=embed, view=view,
@@ -1381,9 +1384,11 @@ class Music(commands.Cog):
         ctx = player.ctx
         if ctx is not None:
             embed = embed_of(
-                f"{E.WARNING} <@{old_id}> YOU LEFT THE VOICE CHANNEL. NOW MUSIC SESSION CONTROL TAKEN BY {new_owner.mention}.",
+                f"{E.WARNING} <@{old_id}> You left the voice channel. Now music session control taken by {new_owner.mention}.",
                 0xFF0000,
             )
+            embed.set_author(name="Session Control Transferred", icon_url=self.client.user.display_avatar.url)
+            embed.set_footer(text=f"Thanks for choosing {config.NAME}!")
             try:
                 await ctx.channel.send(
                     embed=embed,
@@ -1413,15 +1418,18 @@ class Music(commands.Cog):
         await self.client.wait_until_ready()
 
     async def leave_inactive(self, player: MusicPlayer) -> None:
+        player._handled_disconnect = True
         ctx = player.ctx
         await set_vc_status(player.channel, None)
         self.forget_guild(player.guild.id)
+        await self._drop_card(player.card, delete=True)
+        player.card = None
         await player.shutdown()
         if ctx is None:
             return
         minutes = max(config.INACTIVITY_TIMEOUT // 60, 1)
         ended = discord.Embed(
-            description=f"Bot has been disconnected due to inactivity (being idle in Voice Channel) for more than {minutes} minute(s).",
+            description=f"{E.WARNING} Bot has been disconnected due to inactivity (idle in Voice Channel) for more than {minutes} minute(s).",
             color=0xFF0000,
         )
         ended.set_author(name="Inactive Timeout", icon_url=self.client.user.display_avatar.url)
@@ -1471,6 +1479,9 @@ class Music(commands.Cog):
         self, player: MusicPlayer, track: Track, ctx: commands.Context, autoplay: bool = False
     ) -> None:
         channel = ctx.channel
+        if ctx.guild:
+            from utils.state import record_channel
+            record_channel(ctx.guild.id, channel.id)
         me = ctx.guild.me if ctx.guild else None
         if me is not None and not channel.permissions_for(me).send_messages:
             return
@@ -1603,16 +1614,24 @@ class Music(commands.Cog):
             pass
 
     async def finish_playback(self, player: MusicPlayer) -> None:
+        if getattr(player, "_handled_disconnect", False) or not player.is_connected():
+            return
         if player.stay:
             return  # 24/7 mode: stay in the channel (autoplay normally keeps it going)
         ctx = player.ctx
         await set_vc_status(player.channel, None)
         self.forget_guild(player.guild.id)
+        await self._drop_card(player.card, delete=True)
+        player.card = None
         await player.shutdown()
         if ctx is None:
             return
-        ended = discord.Embed(description="All tracks have been played, leaving the voice channel.", color=0xFF0000)
+        ended = discord.Embed(
+            description=f"{E.MUSIC} All tracks have been played, leaving the voice channel.",
+            color=0xFF0000,
+        )
         ended.set_author(name="Queue Ended", icon_url=self.client.user.display_avatar.url)
+        ended.set_footer(text=f"Thanks for choosing {config.NAME}!")
         try:
             await ctx.channel.send(embed=ended)
         except discord.HTTPException:
@@ -1621,6 +1640,10 @@ class Music(commands.Cog):
     # ── playback flow ───────────────────────────────────
     async def ensure_player(self, ctx: commands.Context) -> Optional[MusicPlayer]:
         """Return the guild's player for the author's voice channel (connecting if needed)."""
+        if ctx.guild and ctx.channel:
+            from utils.state import record_channel
+            record_channel(ctx.guild.id, ctx.channel.id)
+
         voice = ctx.author.voice
         if not voice or not voice.channel:
             await ctx.send(embed=embed_of(f"{E.WARNING} You need to be in a voice channel to use this command."))
@@ -1640,7 +1663,7 @@ class Music(commands.Cog):
 
         if vc is not None:
             if vc.channel != voice.channel:
-                await ctx.send(embed=embed_of(f"You must be connected to {vc.channel.mention} to play."))
+                await ctx.send(embed=embed_of(f"{E.WARNING} You must be connected to {vc.channel.mention} to play."))
                 return None
             if not can_control(vc, ctx.author.id):
                 await ctx.send(embed=embed_of(denied_text(vc), 0xFF0000))
@@ -2093,6 +2116,29 @@ class Music(commands.Cog):
         await self.note(ctx, f"Seeked to {percentage}% of the current track.", 0x1DB954)
 
     # ── voice events ────────────────────────────────────
+    async def find_muter(self, guild: discord.Guild) -> Optional[discord.abc.User]:
+        """Best effort: who server-muted the bot (needs View Audit Log)."""
+        me = guild.me
+        if me is None and self.client.user is not None:
+            try:
+                me = await guild.fetch_member(self.client.user.id)
+            except Exception:
+                me = None
+        if not me or not (me.guild_permissions.view_audit_log or me.guild_permissions.administrator):
+            return None
+
+        now = discord.utils.utcnow()
+        try:
+            async for entry in guild.audit_logs(limit=5, action=discord.AuditLogAction.member_update):
+                if (now - entry.created_at).total_seconds() > 25:
+                    break
+                if getattr(entry, "target", None) is not None and entry.target.id == me.id:
+                    if getattr(entry.after, "mute", None) is True:
+                        return entry.user
+        except (discord.HTTPException, discord.Forbidden):
+            pass
+        return None
+
     async def find_disconnector(self, guild: discord.Guild) -> Optional[discord.abc.User]:
         """Best effort: who disconnected / moved the bot (needs View Audit Log)."""
         me = guild.me
@@ -2104,7 +2150,7 @@ class Music(commands.Cog):
         if not me or not (me.guild_permissions.view_audit_log or me.guild_permissions.administrator):
             return None
 
-        for attempt in range(3):
+        for attempt in range(2):
             now = discord.utils.utcnow()
             try:
                 for action in (
@@ -2128,7 +2174,7 @@ class Music(commands.Cog):
                             return entry.user
             except (discord.HTTPException, discord.Forbidden):
                 pass
-            if attempt < 2:
+            if attempt < 1:
                 await asyncio.sleep(1)
         return None
 
@@ -2172,40 +2218,100 @@ class Music(commands.Cog):
                 if vc.ctx is not None:
                     self._sessions[vc.guild.id] = (member.id, vc.ctx.channel.id)
                     try:
+                        embed = discord.Embed(
+                            description=f"{E.WARNING} <@{old_id}> is not in the voice channel. Now music session control taken by {member.mention}.",
+                            color=0xFF0000,
+                        )
+                        embed.set_author(name="Session Control Transferred", icon_url=self.client.user.display_avatar.url)
+                        embed.set_footer(text=f"Thanks for choosing {config.NAME}!")
                         await vc.ctx.channel.send(
-                            embed=embed_of(
-                                f"{E.WARNING} <@{old_id}> IS NOT IN THE VOICE CHANNEL. NOW MUSIC SESSION CONTROL TAKEN BY {member.mention}.",
-                                0xFF0000,
-                            ),
+                            embed=embed,
                             allowed_mentions=discord.AllowedMentions(users=True),
                         )
                     except discord.HTTPException:
                         pass
             return
+
+        # Check if the bot was server muted
+        if not before.mute and after.mute and after.channel is not None:
+            vc = member.guild.voice_client
+            if isinstance(vc, MusicPlayer):
+                vc._handled_disconnect = True
+                if vc.is_playing():
+                    vc.pause()
+                await self._drop_card(vc.card, delete=True)
+                vc.card = None
+
+                session = self._sessions.get(member.guild.id)
+                self.forget_guild(member.guild.id)
+                owner_id, channel_id = (session if session else (vc.session_owner_id, (vc.ctx.channel.id if vc.ctx else 0)))
+                channel = member.guild.get_channel(channel_id) if channel_id else (vc.ctx.channel if vc.ctx else None)
+
+                await asyncio.sleep(1)
+                by = await self.find_muter(member.guild)
+                if by is not None:
+                    who = f"**{by.display_name}** ({by.mention})"
+                else:
+                    who = "**a server moderator**"
+
+                owner_tag = f"<@{owner_id}>, " if owner_id else ""
+                embed = discord.Embed(
+                    description=f"{E.WARNING} {owner_tag}I have been server muted by {who}. Pausing music session and disconnecting from voice.",
+                    color=0xFF0000,
+                )
+                embed.set_author(name="Server Muted", icon_url=self.client.user.display_avatar.url)
+                embed.set_footer(text=f"Thanks for choosing {config.NAME}!")
+
+                try:
+                    await vc.disconnect(force=True)
+                except Exception:
+                    pass
+
+                if channel is not None:
+                    try:
+                        await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions(users=True))
+                    except discord.HTTPException:
+                        pass
+                return
+
         if before.channel is not None and after.channel is None:
-            # Kicked / channel deleted / manual leave: drop our bookkeeping (the player dies with the connection).
+            # Kicked / channel deleted / manual leave: drop our bookkeeping
+            vc = member.guild.voice_client
+            if isinstance(vc, MusicPlayer):
+                if getattr(vc, "_handled_disconnect", False):
+                    return
+                vc._handled_disconnect = True
+                await self._drop_card(vc.card, delete=True)
+                vc.card = None
+
             session = self._sessions.get(member.guild.id)
             self.forget_guild(member.guild.id)
             if session is None:
-                return  # we ended it ourselves (stop / disconnect / idle): those commands already replied
+                return  # we ended it ourselves (stop / disconnect / idle)
+
             owner_id, channel_id = session
             channel = member.guild.get_channel(channel_id)
             if channel is None:
                 return
+
             await asyncio.sleep(1)  # let the audit log entry appear
             by = await self.find_disconnector(member.guild)
             if by is not None:
                 who = f"**{by.display_name}** ({by.mention})"
             else:
-                who = "**someone** (Grant bot 'View Audit Log' permission to show username)"
-            embed = embed_of(
-                f"{E.WARNING} <@{owner_id}>, I'VE BEEN DISCONNECTED BY {who}. YOUR MUSIC SESSION HAS BEEN ENDED.",
-                0xFF0000,
+                who = "**a server moderator**"
+
+            embed = discord.Embed(
+                description=f"{E.WARNING} <@{owner_id}>, I have been disconnected by {who}. Your music session has ended.",
+                color=0xFF0000,
             )
+            embed.set_author(name="Disconnected", icon_url=self.client.user.display_avatar.url)
+            embed.set_footer(text=f"Thanks for choosing {config.NAME}!")
             try:
                 await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions(users=True))
             except discord.HTTPException:
                 pass
+            return
 
     @commands.Cog.listener()
     async def on_message(self, message: discord.Message):

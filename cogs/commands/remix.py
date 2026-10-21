@@ -287,11 +287,11 @@ class Remix(commands.Cog):
     async def _player_for(self, ctx: commands.Context) -> Optional[MusicPlayer]:
         vc = ctx.voice_client
         if not isinstance(vc, MusicPlayer):
-            await ctx.send(embed=_embed("I'm not connected to a voice channel."))
+            await ctx.send(embed=_embed(f"{E.WARNING} I'm not connected to a voice channel.", 0xFF0000))
             return None
         voice = ctx.author.voice
         if not (voice and voice.channel and voice.channel.id == vc.channel.id):
-            await ctx.send(embed=_embed("You need to be in the same voice channel as me."))
+            await ctx.send(embed=_embed(f"{E.WARNING} You need to be in the same voice channel as me.", 0xFF0000))
             return None
         if not can_control(vc, ctx.author.id):
             await ctx.send(embed=_embed(denied_text(vc), 0xFF0000))
@@ -340,8 +340,8 @@ class Remix(commands.Cog):
     async def fx(self, ctx: commands.Context, preset: Optional[str] = None):
         if preset is None:
             names = ", ".join(f"`{n}`" for n in PRESETS)
-            await ctx.send(embed=_embed(f"Presets: {names}\nUse `{ctx.clean_prefix}fx <name>` or `{ctx.clean_prefix}fx off`.\n"
-                                        f"Or open the console with `{ctx.clean_prefix}remix`."))
+            await ctx.send(embed=_embed(f"{E.MUSIC} **Audio FX Presets:** {names}\nUse `{ctx.clean_prefix}fx <name>` or `{ctx.clean_prefix}fx off`.\n"
+                                        f"Or open the console with `{ctx.clean_prefix}remix`.", 0x5865F2))
             return
         player = await self._player_for(ctx)
         if player is None:

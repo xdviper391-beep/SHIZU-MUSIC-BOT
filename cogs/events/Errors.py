@@ -85,7 +85,7 @@ class Errors(Cog):
             return
 
         if isinstance(error, commands.NoPrivateMessage):
-            embed = discord.Embed(color=0x000000, description="You can't use my commands in DMs.")
+            embed = discord.Embed(color=0xFF0000, description=f"{E.WARNING} You can't use my commands in DMs.")
             embed.set_author(name=str(ctx.author), icon_url=avatar)
             embed.set_thumbnail(url=avatar)
             await ctx.reply(embed=embed, delete_after=20)
@@ -98,8 +98,8 @@ class Errors(Cog):
 
         if isinstance(error, commands.CommandOnCooldown):
             embed = discord.Embed(
-                color=0x000000,
-                description=f"{ctx.author.mention} Whoa, slow down there! You can run the command again in "
+                color=0xFF0000,
+                description=f"{E.WARNING} {ctx.author.mention} Whoa, slow down there! You can run the command again in "
                 f"**{error.retry_after:.2f}** seconds.",
             )
             embed.set_author(name="Cooldown", icon_url=bot_avatar)
@@ -110,8 +110,8 @@ class Errors(Cog):
 
         if isinstance(error, commands.MaxConcurrencyReached):
             embed = discord.Embed(
-                color=0x000000,
-                description=f"{ctx.author.mention} This command is already in progress. "
+                color=0xFF0000,
+                description=f"{E.WARNING} {ctx.author.mention} This command is already in progress. "
                 "Please let it finish and try again afterward.",
             )
             embed.set_author(name="Command in Progress.", icon_url=bot_avatar)
@@ -125,8 +125,8 @@ class Errors(Cog):
             missing = [perm.replace("_", " ").replace("guild", "server").title() for perm in error.missing_permissions]
             fmt = "{}, and {}".format(", ".join(missing[:-1]), missing[-1]) if len(missing) > 2 else " and ".join(missing)
             embed = discord.Embed(
-                color=0x000000,
-                description=f"You lack the **{fmt}** Permission to run the **{ctx.command.name}** command!",
+                color=0xFF0000,
+                description=f"{E.WARNING} You lack the **{fmt}** Permission to run the **{ctx.command.name}** command!",
             )
             embed.set_author(name="Missing Permissions", icon_url=bot_avatar)
             embed.set_thumbnail(url=bot_avatar)
@@ -142,10 +142,14 @@ class Errors(Cog):
 
         if isinstance(error, commands.BotMissingPermissions):
             missing = ", ".join(perm.replace("_", " ").title() for perm in error.missing_permissions)
-            await ctx.reply(
-                f"{E.DENIED} I need **{missing}** Permission to run the **{ctx.command.qualified_name}** command!",
-                delete_after=7,
+            embed = discord.Embed(
+                color=0xFF0000,
+                description=f"{E.WARNING} I lack the **{missing}** Permission to execute this command!",
             )
+            embed.set_author(name="Bot Missing Permissions", icon_url=bot_avatar)
+            embed.set_thumbnail(url=bot_avatar)
+            embed.set_footer(text=f"Requested by {ctx.author}", icon_url=avatar)
+            await ctx.reply(embed=embed, delete_after=7)
             return
 
         if isinstance(real, discord.HTTPException) and not isinstance(error, commands.CommandInvokeError):
