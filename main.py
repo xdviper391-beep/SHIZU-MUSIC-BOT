@@ -25,7 +25,7 @@ if config.ENABLE_JISHAKU:
     os.environ.setdefault("JISHAKU_NO_UNDERSCORE", "True")
     os.environ.setdefault("JISHAKU_FORCE_PAGINATOR", "True")
 
-from core.TestingMusic import TestingMusic  # noqa: E402
+from core.ShizuMusic import ShizuMusic  # noqa: E402
 
 
 def keep_alive() -> None:
@@ -51,7 +51,7 @@ async def main() -> None:
     if config.KEEP_ALIVE:
         keep_alive()
 
-    bot = TestingMusic()
+    bot = ShizuMusic()
     try:
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGINT, signal.SIGTERM):

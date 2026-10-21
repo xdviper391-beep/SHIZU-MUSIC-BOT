@@ -3,11 +3,11 @@ import logging
 import discord
 from discord.ext import commands
 
-from core import Cog, Context, TestingMusic
+from core import Cog, Context, ShizuMusic
 from utils import emojis as E
 from utils.Tools import get_ignore_data
 
-log = logging.getLogger("testingmusic.errors")
+log = logging.getLogger("shizumusic.errors")
 
 
 def _unwrap(error: Exception) -> Exception:
@@ -19,7 +19,7 @@ def _unwrap(error: Exception) -> Exception:
 
 
 class Errors(Cog):
-    def __init__(self, client: TestingMusic):
+    def __init__(self, client: ShizuMusic):
         self.client = client
 
     @commands.Cog.listener()

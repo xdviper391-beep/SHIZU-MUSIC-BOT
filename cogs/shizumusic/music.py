@@ -16,4 +16,4 @@ class _music(commands.Cog):
 
     @commands.group()
     async def __Music__(self, ctx: commands.Context):
-        """`play` , `search` , `loop` , `autoplay` , `nowplaying` , `shuffle` , `stop` , `skip` , `seek` , `join` , `disconnect` , `247` , `replay` , `queue` , `clearqueue` , `pause` , `resume` , `volume` , `remix` , `fx` , `bass` , `filter` , `filter enable` , `filter disable`"""
+        """`play` , `search` , `loop` , `autoplay` , `nowplaying` , `shuffle` , `stop` , `skip` , `seek` , `join` , `disconnect` , `247` , `replay` , `queue` , `clearqueue` , `pause` , `resume` , `volume` , `remix` , `fx` , `bass` , `filter` , `filter enable` , `filter disable` , `setprefix` , `prefix`"""

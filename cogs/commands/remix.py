@@ -24,7 +24,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from core import TestingMusic
+from core import ShizuMusic
 from utils import button_emojis as BE
 from utils import emojis as E
 from utils.remix import (
@@ -46,7 +46,7 @@ from utils.Tools import blacklist_check, ignore_check
 
 from .music import MusicPlayer
 
-log = logging.getLogger("testingmusic.remix")
+log = logging.getLogger("shizumusic.remix")
 
 GREY = discord.Color.from_rgb(43, 45, 49)
 
@@ -246,7 +246,7 @@ class RemixPanel(discord.ui.View):
 #  COG
 # ═════════════════════════════════════════════════════════════════════════════
 class Remix(commands.Cog):
-    def __init__(self, bot: TestingMusic):
+    def __init__(self, bot: ShizuMusic):
         self.bot = bot
 
     async def cog_load(self) -> None:
@@ -394,5 +394,5 @@ class Remix(commands.Cog):
         await self._say(ctx, text)
 
 
-async def setup(bot: TestingMusic) -> None:  # lets `load_extension` work too; cogs/__init__ adds it normally
+async def setup(bot: ShizuMusic) -> None:  # lets `load_extension` work too; cogs/__init__ adds it normally
     await bot.add_cog(Remix(bot))

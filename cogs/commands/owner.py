@@ -7,7 +7,7 @@ from typing import Optional, Tuple
 import discord
 from discord.ext import commands
 
-from core import TestingMusic
+from core import ShizuMusic
 from utils import DescriptionEmbedPaginator, Paginator
 from utils import emojis as E
 
@@ -46,7 +46,7 @@ def _access(expires_at: Optional[datetime]) -> str:
 class Owner(commands.Cog):
     """Bot-owner only commands. Hidden from help, silent for everyone else."""
 
-    def __init__(self, bot: TestingMusic):
+    def __init__(self, bot: ShizuMusic):
         self.bot = bot
 
     async def cog_check(self, ctx: commands.Context) -> bool:

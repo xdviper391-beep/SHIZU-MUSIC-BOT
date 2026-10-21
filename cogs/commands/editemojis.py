@@ -16,11 +16,11 @@ from typing import Optional
 import discord
 from discord.ext import commands
 
-from core import TestingMusic
+from core import ShizuMusic
 from utils import button_emojis as BE
 from utils.emoji_sync import ensure_app_emoji
 
-log = logging.getLogger("testingmusic.editemojis")
+log = logging.getLogger("shizumusic.editemojis")
 
 GREY = discord.Color.from_rgb(43, 45, 49)
 PAGES = {"player": ("Player buttons", BE.PLAYER_SLOTS), "remix": ("Remix console", BE.REMIX_SLOTS)}
@@ -90,7 +90,7 @@ class EmojiModal(discord.ui.Modal):
 class EmojiEditor(discord.ui.View):
     """Row 0: Player | Remix | Reset page.  Rows 1-4: one button per slot, showing its current emoji."""
 
-    def __init__(self, bot: TestingMusic, owner_id: int, page: str = "player") -> None:
+    def __init__(self, bot: ShizuMusic, owner_id: int, page: str = "player") -> None:
         super().__init__(timeout=600)
         self.bot = bot
         self.owner_id = owner_id
@@ -167,7 +167,7 @@ class EmojiEditor(discord.ui.View):
 class EditEmojis(commands.Cog):
     """Bot-owner only. Hidden from help, silent for everyone else."""
 
-    def __init__(self, bot: TestingMusic):
+    def __init__(self, bot: ShizuMusic):
         self.bot = bot
 
     async def cog_check(self, ctx: commands.Context) -> bool:
@@ -187,5 +187,5 @@ class EditEmojis(commands.Cog):
         view.message = await ctx.send(embed=view.embed(), view=view)
 
 
-async def setup(bot: TestingMusic) -> None:
+async def setup(bot: ShizuMusic) -> None:
     await bot.add_cog(EditEmojis(bot))

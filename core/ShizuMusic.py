@@ -18,12 +18,12 @@ from utils.emoji_sync import sync_application_emojis
 from .Context import Context
 
 init(autoreset=True)
-log = logging.getLogger("testingmusic")
+log = logging.getLogger("shizumusic")
 
 extensions: List[str] = ["cogs"]
 
 
-class TestingMusic(commands.AutoShardedBot):
+class ShizuMusic(commands.AutoShardedBot):
     session: aiohttp.ClientSession
 
     def __init__(self, *args, **kwargs):
@@ -371,3 +371,7 @@ class TestingMusic(commands.AutoShardedBot):
         if ctx.command is None:
             return
         await self.invoke(ctx)
+
+
+TestingMusic = ShizuMusic
+

@@ -1,4 +1,4 @@
-"""testingmusic main music cog: discord.py voice + yt-dlp + FFmpeg.
+"""shizumusic main music cog: discord.py voice + yt-dlp + FFmpeg.
 
 No Lavalink, no Wavelink. Same commands, replies, permissions, embeds and buttons as the old Lavalink cog;
 only the playback engine underneath changed. This cog does not import the Remix cog: the "Remix" button
@@ -36,7 +36,7 @@ import yt_dlp
 from discord.ext import commands, tasks
 from discord.ui import Button, View
 
-from core import TestingMusic
+from core import ShizuMusic
 from utils import DescriptionEmbedPaginator, Paginator, config
 from utils import button_emojis as BE
 from utils import emojis as E
@@ -44,7 +44,7 @@ from utils.banner import player_effect_chips, render_banner
 from utils.session import SESSION_GRACE, can_control, denied_text, refresh_owner_presence, start_session
 from utils.Tools import blacklist_check, getConfig, ignore_check
 
-log = logging.getLogger("testingmusic.music")
+log = logging.getLogger("shizumusic.music")
 
 # ───────────────────────────── configuration ─────────────────────────────
 MIN_VOLUME = 1
@@ -1251,7 +1251,7 @@ class ContinueView(View):
 
 
 class Music(commands.Cog):
-    def __init__(self, client: TestingMusic):
+    def __init__(self, client: ShizuMusic):
         self.client = client
         self._alone_since: dict[int, float] = {}
         # guild_id -> (owner_id, text_channel_id): live sessions, used for the "disconnected by" notice

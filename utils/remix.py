@@ -40,7 +40,7 @@ from typing import Dict, Iterable, List, Optional, Tuple
 
 from utils import emojis as E
 
-log = logging.getLogger("testingmusic.remix")
+log = logging.getLogger("shizumusic.remix")
 
 SAMPLE_RATE = 48000       # what discord.py asks FFmpeg for (48 kHz stereo s16le)
 MAX_VOLUME = 300          # player volume, percent

@@ -6,7 +6,7 @@ import os
 import time
 from typing import Any, Dict, Optional
 
-log = logging.getLogger("testingmusic.state")
+log = logging.getLogger("shizumusic.state")
 STATE_FILE = os.path.join(os.path.dirname(os.path.dirname(__file__)), "db", "bot_state.json")
 
 

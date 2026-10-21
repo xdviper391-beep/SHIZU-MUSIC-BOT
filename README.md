@@ -15,7 +15,7 @@ state per server, stored on the music player.
 ```bash
 termux-setup-storage                      # one time: allow storage access
 pkg install -y unzip
-cp ~/storage/downloads/testingmusic.zip ~ && cd ~ && unzip testingmusic.zip && cd testingmusic
+cp ~/storage/downloads/shizumusic.zip ~ && cd ~ && unzip shizumusic.zip && cd shizumusic
 bash setup_termux.sh                      # installs everything, asks for the bot token, starts the bot
 ```
 

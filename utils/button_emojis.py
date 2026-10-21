@@ -19,7 +19,7 @@ from utils import emojis as E
 from utils.config import DB_DIR
 from utils.remix import EFFECTS
 
-log = logging.getLogger("testingmusic.button_emojis")
+log = logging.getLogger("shizumusic.button_emojis")
 
 STORE_PATH = DB_DIR / "button_emojis.json"
 CUSTOM_RE = re.compile(r"^<(a?):([A-Za-z0-9_]{2,32}):(\d{15,25})>$")

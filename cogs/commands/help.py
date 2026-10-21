@@ -5,7 +5,7 @@ from discord import app_commands, Interaction
 from difflib import get_close_matches
 from contextlib import suppress
 from core import Context
-from core.TestingMusic import TestingMusic
+from core.ShizuMusic import ShizuMusic
 from core.Cog import Cog
 from utils.Tools import getConfig
 from utils import help as vhelp
@@ -35,7 +35,7 @@ class HelpCommand(commands.HelpCommand):
       discord.HTTPException, commands.CommandInvokeError
     ]
     if not type(error) in errors:
-      logging.getLogger("testingmusic.help").error("Help command failed", exc_info=error)
+      logging.getLogger("shizumusic.help").error("Help command failed", exc_info=error)
       await self.context.reply("Something went wrong while opening help. Please try again in a moment.",
                                mention_author=False)
     else:
@@ -242,7 +242,7 @@ class HelpCommand(commands.HelpCommand):
 
 class Help(Cog, name="help"):
 
-  def __init__(self, client: TestingMusic):
+  def __init__(self, client: ShizuMusic):
     self._original_help_command = client.help_command
     attributes = {
       'name':

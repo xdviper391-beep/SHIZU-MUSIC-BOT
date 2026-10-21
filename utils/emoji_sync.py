@@ -21,7 +21,7 @@ import discord
 
 from utils import emojis
 
-log = logging.getLogger("testingmusic.emojis")
+log = logging.getLogger("shizumusic.emojis")
 
 EMOJI_RE = re.compile(r"^<(a?):([A-Za-z0-9_]{2,32}):(\d{15,25})>$")
 CDN_URL = "https://cdn.discordapp.com/emojis/{id}.{ext}?size={size}&quality=lossless"
