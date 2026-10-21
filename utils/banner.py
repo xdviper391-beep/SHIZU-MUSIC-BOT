@@ -244,6 +244,7 @@ def render_banner(
     duration: str = "",
     source: str = "",
     requester: str = "",
+    session_text: str = "",
     effects: Sequence[str] = (),
 ) -> bytes:
     """Return the banner as PNG bytes."""
@@ -326,11 +327,12 @@ def render_banner(
     if duration:
         draw.text((right - draw.textlength(duration, font=small), t_y), duration, font=small,
                   fill=(255, 255, 255, 150))
-    if requester:
+    display_info = session_text or (f"session connected - @{requester}" if requester else "")
+    if display_info:
         rfont = _font("Regular", 16)
-        text = _ellipsize(draw, _clean(f"requested by {requester}"), rfont, max_w - 200)
+        text = _ellipsize(draw, _clean(display_info), rfont, max_w - 200)
         draw.text((left + (max_w - draw.textlength(text, font=rfont)) / 2, t_y + 1), text, font=rfont,
-                  fill=(255, 255, 255, 115))
+                  fill=(255, 255, 255, 140))
 
     # chips row: source + remix effects (as many as fit, then "+N")
     y_chips = 350

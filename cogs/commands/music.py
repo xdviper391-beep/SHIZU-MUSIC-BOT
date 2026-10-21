@@ -521,6 +521,7 @@ class MusicPlayer(discord.VoiceClient):
         self.speed: float = 1.0
         self.remix_state = None                    # utils.remix.RemixState, created on first use (get_state)
         self.session_owner_id: Optional[int] = None
+        self.transferred: bool = False
         self.owner_absent_since: Optional[float] = None
         self.stay: bool = False                          # 24/7 mode: never leave, keep playing via autoplay
         self.awaiting_owner: bool = False                # owner left an empty channel: waiting for Continue / Stop
@@ -1349,7 +1350,7 @@ class Music(commands.Cog):
         )
         try:
             view.message = await ctx.channel.send(
-                content=f"<@{owner_id}>", embed=embed, view=view,
+                embed=embed, view=view,
                 allowed_mentions=discord.AllowedMentions(users=True),
             )
         except discord.HTTPException:
@@ -1375,6 +1376,7 @@ class Music(commands.Cog):
             return True
         new_owner = random.choice(candidates)
         start_session(player, new_owner.id)
+        player.transferred = True
         self._sessions[player.guild.id] = (new_owner.id, (player.ctx.channel.id if player.ctx else 0))
         ctx = player.ctx
         if ctx is not None:
@@ -1384,7 +1386,7 @@ class Music(commands.Cog):
             )
             try:
                 await ctx.channel.send(
-                    content=f"<@{old_id}> {new_owner.mention}", embed=embed,
+                    embed=embed,
                     allowed_mentions=discord.AllowedMentions(users=True),
                 )
             except discord.HTTPException:
@@ -1431,7 +1433,7 @@ class Music(commands.Cog):
 
     # ── player card ─────────────────────────────────────
     async def build_player_card(
-        self, track: Track, requester: str = "", effects: tuple = ()
+        self, track: Track, player: MusicPlayer, effects: tuple = ()
     ) -> Optional[discord.File]:
         """The Pillow banner (utils/banner.py). Needs no template file, only Pillow."""
         artwork: Optional[bytes] = None
@@ -1444,6 +1446,15 @@ class Music(commands.Cog):
             except (aiohttp.ClientError, asyncio.TimeoutError):
                 artwork = None
         name, _, _ = source_info(track)
+
+        owner_id = player.session_owner_id
+        owner_member = player.channel.guild.get_member(owner_id) if (owner_id and player.channel) else None
+        owner_name = owner_member.display_name if owner_member else "Owner"
+        if getattr(player, "transferred", False):
+            session_status = f"session transferred - @{owner_name}"
+        else:
+            session_status = f"session connected - @{owner_name}"
+
         data = await asyncio.to_thread(
             render_banner,
             artwork=artwork,
@@ -1451,7 +1462,7 @@ class Music(commands.Cog):
             artist=track.author or "",
             duration=track_duration(track),
             source=name,
-            requester=requester,
+            session_text=session_status,
             effects=list(effects),
         )
         return discord.File(io.BytesIO(data), filename="player.png")
@@ -1473,13 +1484,29 @@ class Music(commands.Cog):
             embed.add_field(name="Source", value=f"[{emoji} Listen on {name}]({track.uri})")
         else:
             embed.add_field(name="Source", value=f"{emoji} {name}")
-        requested_by = ctx.author.display_name + (" (Autoplay Mode)" if autoplay else "")
-        embed.set_footer(text=f"Requested by {requested_by}", icon_url=ctx.author.display_avatar.url)
+
+        owner_id = player.session_owner_id or (ctx.author.id if ctx else None)
+        owner_member = ctx.guild.get_member(owner_id) if (owner_id and ctx.guild) else None
+        owner_name = owner_member.display_name if owner_member else (ctx.author.display_name if ctx else "Owner")
+        owner_mention = f"<@{owner_id}>" if owner_id else f"@{owner_name}"
+
+        if getattr(player, "transferred", False):
+            session_footer = f"Session Control: @{owner_name}"
+            session_field_val = f"Transferred to {owner_mention}"
+        else:
+            session_footer = f"Session Connected: @{owner_name}"
+            session_field_val = f"Connected by {owner_mention}"
+
+        embed.add_field(name="Session", value=session_field_val)
+        embed.set_footer(
+            text=session_footer + (" • (Autoplay Mode)" if autoplay else ""),
+            icon_url=owner_member.display_avatar.url if owner_member else ctx.author.display_avatar.url
+        )
 
         file: Optional[discord.File] = None
         if me is None or channel.permissions_for(me).attach_files:
             try:
-                file = await self.build_player_card(track, requested_by, player_effect_chips(player))
+                file = await self.build_player_card(track, player, player_effect_chips(player))
             except Exception:
                 log.warning("Could not build the player card", exc_info=True)
         if file is not None:
@@ -2141,11 +2168,11 @@ class Music(commands.Cog):
                 # 24/7 mode and the owner is gone: the first person to join takes the session
                 old_id = vc.session_owner_id
                 start_session(vc, member.id)
+                vc.transferred = True
                 if vc.ctx is not None:
                     self._sessions[vc.guild.id] = (member.id, vc.ctx.channel.id)
                     try:
                         await vc.ctx.channel.send(
-                            content=f"<@{old_id}> {member.mention}",
                             embed=embed_of(
                                 f"{E.WARNING} <@{old_id}> IS NOT IN THE VOICE CHANNEL. NOW MUSIC SESSION CONTROL TAKEN BY {member.mention}.",
                                 0xFF0000,
@@ -2172,11 +2199,11 @@ class Music(commands.Cog):
             else:
                 who = "**someone** (Grant bot 'View Audit Log' permission to show username)"
             embed = embed_of(
-                f"{E.WARNING} I'VE BEEN DISCONNECTED BY {who}. YOUR MUSIC SESSION HAS BEEN ENDED.",
+                f"{E.WARNING} <@{owner_id}>, I'VE BEEN DISCONNECTED BY {who}. YOUR MUSIC SESSION HAS BEEN ENDED.",
                 0xFF0000,
             )
             try:
-                await channel.send(content=f"<@{owner_id}>", embed=embed, allowed_mentions=discord.AllowedMentions(users=True))
+                await channel.send(embed=embed, allowed_mentions=discord.AllowedMentions(users=True))
             except discord.HTTPException:
                 pass
 
