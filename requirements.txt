@@ -1,0 +1,17 @@
+# Core (current releases as of Oct 2026: discord.py 2.7.x)
+# discord.py[voice] pulls in PyNaCl (voice encryption). FFmpeg itself is NOT a pip package:
+# install it on your system (Windows: `winget install Gyan.FFmpeg`, Debian/Ubuntu: `apt install ffmpeg`,
+# macOS: `brew install ffmpeg`) or point FFMPEG_PATH in .env at the executable.
+discord.py[voice]>=2.7.1,<3
+yt-dlp[default]
+aiosqlite
+aiohttp
+pillow
+python-dotenv>=1.0
+colorama
+# Bundled FFmpeg for hosts where you cannot install it (skipped on Termux, which uses `pkg install ffmpeg`)
+imageio-ffmpeg; platform_system == "Linux" and sys_platform == "linux"
+
+# Optional - only imported when the matching option is enabled in .env
+jishaku
+flask
