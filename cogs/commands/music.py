@@ -919,6 +919,26 @@ class SearchResultView(View):
         return callback
 
 
+def format_session_users(
+    player_or_owner_id: Any,
+    trigger_user: discord.abc.User,
+    guild: Optional[discord.Guild] = None,
+) -> tuple[str, str, bool]:
+    """Return (owner_text, trigger_text, is_owner) formatted with <@id> and **display_name**."""
+    if isinstance(player_or_owner_id, int):
+        owner_id = player_or_owner_id
+    elif player_or_owner_id is None:
+        owner_id = None
+    else:
+        owner_id = getattr(player_or_owner_id, "session_owner_id", None)
+
+    owner_member = guild.get_member(owner_id) if (guild and owner_id) else None
+    owner_text = f"{owner_member.mention} (**{owner_member.display_name}**)" if owner_member else (f"<@{owner_id}>" if owner_id else "Session Author")
+    trigger_text = f"{trigger_user.mention} (**{trigger_user.display_name}**)"
+    is_owner = bool(owner_id and trigger_user.id == owner_id)
+    return owner_text, trigger_text, is_owner
+
+
 class _PlayerView(View):
     """Base of the player card and the private Others panel: same player, same checks."""
 
@@ -1012,26 +1032,37 @@ class MusicControlView(_PlayerView):
             return
         self.player.autoplay = not self.player.autoplay
         state = "enabled" if self.player.autoplay else "disabled"
-        await interaction.response.edit_message(**self.refresh(f"{E.TICK}  Autoplay {state} by {interaction.user.mention}."))
+        owner_text, trigger_text, is_owner = format_session_users(self.player, interaction.user, interaction.guild)
+        if is_owner:
+            msg = f"{E.TICK} Autoplay {state} by session author {trigger_text}."
+        else:
+            msg = f"{E.TICK} Autoplay {state} by {trigger_text} (Session Author: {owner_text})."
+        await interaction.response.edit_message(**self.refresh(msg))
 
     @discord.ui.button(label="Pause", style=discord.ButtonStyle.primary, row=0)
     async def pause_button(self, interaction: discord.Interaction, button: Button):
         title = self.player.current.title if self.player.current else "Unknown"
+        owner_text, trigger_text, is_owner = format_session_users(self.player, interaction.user, interaction.guild)
         if self.player.paused:
             self.player.resume()
             await set_vc_status(self.player.channel, f"{E.MUSIC} Playing: {title}")
-            text = f"Resumed by {interaction.user.mention}."
+            text = f"{E.BTN_RESUME} Resumed by session author {trigger_text}." if is_owner else f"{E.BTN_RESUME} Resumed by {trigger_text} (Session Author: {owner_text})."
         else:
             self.player.pause()
             await set_vc_status(self.player.channel, f"{E.MUSIC} Paused: {title}")
-            text = f"Paused by {interaction.user.mention}."
+            text = f"{E.BTN_PAUSE} Paused by session author {trigger_text}." if is_owner else f"{E.BTN_PAUSE} Paused by {trigger_text} (Session Author: {owner_text})."
         await interaction.response.edit_message(**self.refresh(text))
 
     @discord.ui.button(label="Next", style=discord.ButtonStyle.secondary, row=0)
     async def skip_button(self, interaction: discord.Interaction, button: Button):
         if self.player.autoplay or not self.player.queue.is_empty:
             await interaction.response.defer()  # the reply goes on the next song's card, no extra message
-            self.player.pending_note = f"Skipped by {interaction.user.mention}."
+            owner_text, trigger_text, is_owner = format_session_users(self.player, interaction.user, interaction.guild)
+            self.player.pending_note = (
+                f"{E.BTN_SKIP} Skipped by session author {trigger_text}."
+                if is_owner
+                else f"{E.BTN_SKIP} Skipped by {trigger_text} (Session Author: {owner_text})."
+            )
             await self.player.skip()
         else:
             await interaction.response.send_message("No song in queue to skip.", ephemeral=True)
@@ -1107,7 +1138,12 @@ class OthersPanel(_PlayerView):
             await interaction.response.send_message("No previous track available.", ephemeral=True)
             return
         await interaction.response.defer()  # the reply goes on the previous song's card
-        self.player.pending_note = f"Playing the previous track, by {interaction.user.mention}."
+        owner_text, trigger_text, is_owner = format_session_users(self.player, interaction.user, interaction.guild)
+        self.player.pending_note = (
+            f"{E.BTN_PREVIOUS} Playing previous track by session author {trigger_text}."
+            if is_owner
+            else f"{E.BTN_PREVIOUS} Playing previous track by {trigger_text} (Session Author: {owner_text})."
+        )
         if await self.player.previous() is None:
             self.player.pending_note = None
             await interaction.followup.send("No previous track available.", ephemeral=True)
@@ -1121,23 +1157,45 @@ class OthersPanel(_PlayerView):
         self.sync()
         await interaction.response.edit_message(embed=self.embed(), view=self)
         state = "enabled" if player.stay else "disabled"
-        await self.say(f"{E.TICK}  24/7 mode {state} by {interaction.user.mention}.")
+        owner_text, trigger_text, is_owner = format_session_users(self.player, interaction.user, interaction.guild)
+        text = (
+            f"{E.TICK} 24/7 mode {state} by session author {trigger_text}."
+            if is_owner
+            else f"{E.TICK} 24/7 mode {state} by {trigger_text} (Session Author: {owner_text})."
+        )
+        await self.say(text)
 
     @discord.ui.button(label="\u221210s", style=discord.ButtonStyle.secondary, row=0)
     async def rewind_button(self, interaction: discord.Interaction, button: Button):
-        await self._seek(interaction, lambda track: max(self.player.position - 10000, 0),
-                         f"Rewound 10 seconds by {interaction.user.mention}.")
+        owner_text, trigger_text, is_owner = format_session_users(self.player, interaction.user, interaction.guild)
+        text = (
+            f"{E.BTN_REWIND} Rewound 10 seconds by session author {trigger_text}."
+            if is_owner
+            else f"{E.BTN_REWIND} Rewound 10 seconds by {trigger_text} (Session Author: {owner_text})."
+        )
+        await self._seek(interaction, lambda track: max(self.player.position - 10000, 0), text)
 
     @discord.ui.button(label="+10s", style=discord.ButtonStyle.secondary, row=0)
     async def forward_button(self, interaction: discord.Interaction, button: Button):
-        await self._seek(interaction, lambda track: min(self.player.position + 10000, max(track.length - 1000, 0)),
-                         f"Forwarded 10 seconds by {interaction.user.mention}.")
+        owner_text, trigger_text, is_owner = format_session_users(self.player, interaction.user, interaction.guild)
+        text = (
+            f"{E.BTN_FORWARD} Forwarded 10 seconds by session author {trigger_text}."
+            if is_owner
+            else f"{E.BTN_FORWARD} Forwarded 10 seconds by {trigger_text} (Session Author: {owner_text})."
+        )
+        await self._seek(interaction, lambda track: min(self.player.position + 10000, max(track.length - 1000, 0)), text)
 
     @discord.ui.button(label="Replay", style=discord.ButtonStyle.secondary, row=0)
     async def replay_button(self, interaction: discord.Interaction, button: Button):
         await interaction.response.defer()
         await self.player.seek(0)
-        await self.say("Replaying the current track.")
+        owner_text, trigger_text, is_owner = format_session_users(self.player, interaction.user, interaction.guild)
+        text = (
+            f"{E.BTN_REPLAY} Replaying current track by session author {trigger_text}."
+            if is_owner
+            else f"{E.BTN_REPLAY} Replaying current track by {trigger_text} (Session Author: {owner_text})."
+        )
+        await self.say(text)
 
     @discord.ui.button(label="Shuffle", style=discord.ButtonStyle.secondary, row=1)
     async def shuffle_button(self, interaction: discord.Interaction, button: Button):
@@ -1146,7 +1204,13 @@ class OthersPanel(_PlayerView):
             return
         self.player.queue.shuffle()
         await interaction.response.defer()
-        await self.say(f"Queue shuffled by {interaction.user.mention}.")
+        owner_text, trigger_text, is_owner = format_session_users(self.player, interaction.user, interaction.guild)
+        text = (
+            f"{E.BTN_SHUFFLE} Queue shuffled by session author {trigger_text}."
+            if is_owner
+            else f"{E.BTN_SHUFFLE} Queue shuffled by {trigger_text} (Session Author: {owner_text})."
+        )
+        await self.say(text)
 
     @discord.ui.button(label="Loop", style=discord.ButtonStyle.secondary, row=1)
     async def loop_button(self, interaction: discord.Interaction, button: Button):
@@ -1154,7 +1218,13 @@ class OthersPanel(_PlayerView):
         self.sync()
         await interaction.response.edit_message(embed=self.embed(), view=self)
         state = "enabled" if self.player.loop_mode else "disabled"
-        await self.say(f"{E.TICK}  Loop {state} by {interaction.user.mention}.")
+        owner_text, trigger_text, is_owner = format_session_users(self.player, interaction.user, interaction.guild)
+        text = (
+            f"{E.BTN_LOOP} Loop {state} by session author {trigger_text}."
+            if is_owner
+            else f"{E.BTN_LOOP} Loop {state} by {trigger_text} (Session Author: {owner_text})."
+        )
+        await self.say(text)
 
     @discord.ui.button(label="Remix", style=discord.ButtonStyle.secondary, row=1)
     async def remix_button(self, interaction: discord.Interaction, button: Button):
@@ -1171,13 +1241,31 @@ class OthersPanel(_PlayerView):
         await interaction.response.edit_message(content="Stopped and disconnected.", embed=None, view=None)
         self.stop()
         await set_vc_status(player.channel, None)
+        player._handled_disconnect = True
         cog = interaction.client.get_cog("Music")
         if cog is not None:
             cog.forget_guild(interaction.guild.id)
+        owner_id = player.session_owner_id
         await player.shutdown()  # also takes the buttons off the player card
         if ctx is not None:
+            guild = ctx.guild
+            owner_member = guild.get_member(owner_id) if (guild and owner_id) else None
+            owner_text = f"{owner_member.mention} (**{owner_member.display_name}**)" if owner_member else (f"<@{owner_id}>" if owner_id else "Session Author")
+            trigger_text = f"{interaction.user.mention} (**{interaction.user.display_name}**)"
+
+            if owner_id and interaction.user.id == owner_id:
+                desc = f"{E.BTN_STOP} Music session stopped and disconnected by session author {trigger_text}."
+            else:
+                desc = (
+                    f"{E.BTN_STOP} **Music Session Stopped & Disconnected**\n\n"
+                    f"• **Session Author:** {owner_text}\n"
+                    f"• **Triggered by:** {trigger_text}"
+                )
+            embed = embed_of(desc, 0xFF0000)
+            embed.set_author(name="Session Stopped", icon_url=interaction.client.user.display_avatar.url)
+            embed.set_footer(text=f"Thanks for choosing {config.NAME}!")
             try:
-                await ctx.channel.send(f"Stopped and disconnected by **{interaction.user.display_name}**.")
+                await ctx.channel.send(embed=embed, allowed_mentions=discord.AllowedMentions(users=True))
             except discord.HTTPException:
                 pass
 
@@ -1223,16 +1311,33 @@ class ContinueView(View):
             return
         self.cog.resume_after_owner(player)
         self.stop()
+        trigger_text = f"{interaction.user.mention} (**{interaction.user.display_name}**)"
+        embed = embed_of(f"{E.TICK} Music session continued by session author {trigger_text}.", 0x1DB954)
+        embed.set_author(name="Session Continued", icon_url=interaction.client.user.display_avatar.url)
+        embed.set_footer(text=f"Thanks for choosing {config.NAME}!")
         await interaction.response.edit_message(
-            content=None, embed=embed_of(f"{E.TICK} Music session continued by {interaction.user.mention}.", 0x1DB954), view=None
+            content=None, embed=embed, view=None
         )
 
     @discord.ui.button(label="No", style=discord.ButtonStyle.danger)
     async def no(self, interaction: discord.Interaction, button: Button):
         self.stop()
-        await interaction.response.edit_message(
-            content=None, embed=embed_of(f"Music session stopped by {interaction.user.mention}.", 0xFF0000), view=None
-        )
+        guild = interaction.guild
+        owner_member = guild.get_member(self.owner_id) if (guild and self.owner_id) else None
+        owner_text = f"{owner_member.mention} (**{owner_member.display_name}**)" if owner_member else f"<@{self.owner_id}>"
+        trigger_text = f"{interaction.user.mention} (**{interaction.user.display_name}**)"
+        if interaction.user.id == self.owner_id:
+            desc = f"{E.BTN_STOP} Music session stopped by session author {trigger_text}."
+        else:
+            desc = (
+                f"{E.BTN_STOP} **Music Session Stopped**\n\n"
+                f"• **Session Author:** {owner_text}\n"
+                f"• **Triggered by:** {trigger_text}"
+            )
+        embed = embed_of(desc, 0xFF0000)
+        embed.set_author(name="Session Stopped", icon_url=interaction.client.user.display_avatar.url)
+        embed.set_footer(text=f"Thanks for choosing {config.NAME}!")
+        await interaction.response.edit_message(content=None, embed=embed, view=None)
         await self.cog.close_session(self.player)
 
     async def on_timeout(self) -> None:
@@ -1383,9 +1488,18 @@ class Music(commands.Cog):
         self._sessions[player.guild.id] = (new_owner.id, (player.ctx.channel.id if player.ctx else 0))
         ctx = player.ctx
         if ctx is not None:
-            embed = embed_of(
-                f"{E.WARNING} <@{old_id}> You left the voice channel. Now music session control taken by {new_owner.mention}.",
-                0xFF0000,
+            old_member = channel.guild.get_member(old_id)
+            old_text = f"{old_member.mention} (**{old_member.display_name}**)" if old_member else f"<@{old_id}>"
+            new_text = f"{new_owner.mention} (**{new_owner.display_name}**)"
+            embed = discord.Embed(
+                description=(
+                    f"{E.WARNING} **Session Control Transferred**\n\n"
+                    f"• **Session Author:** {old_text}\n"
+                    f"• **New Controller:** {new_text}\n\n"
+                    f"Session author {old_text} left the voice channel. "
+                    f"Music session control has been transferred to {new_text}."
+                ),
+                color=0xFF0000,
             )
             embed.set_author(name="Session Control Transferred", icon_url=self.client.user.display_avatar.url)
             embed.set_footer(text=f"Thanks for choosing {config.NAME}!")
@@ -1888,7 +2002,12 @@ class Music(commands.Cog):
             return
         vc.autoplay = not vc.autoplay
         state = "enabled" if vc.autoplay else "disabled"
-        await self.note(ctx, f"{E.TICK}  Autoplay {state} by {ctx.author.mention}.")
+        owner_text, trigger_text, is_owner = format_session_users(vc, ctx.author, ctx.guild)
+        if is_owner:
+            msg = f"{E.TICK} Autoplay {state} by session author {trigger_text}."
+        else:
+            msg = f"{E.TICK} Autoplay {state} by {trigger_text} (Session Author: {owner_text})."
+        await self.note(ctx, msg)
 
     @commands.hybrid_command(name="loop", usage="loop", help="Toggles loop mode.")
     @blacklist_check()
@@ -1900,7 +2019,12 @@ class Music(commands.Cog):
             return
         vc.loop_mode = not vc.loop_mode
         state = "enabled" if vc.loop_mode else "disabled"
-        await self.note(ctx, f"{E.TICK}  Loop {state} by {ctx.author.mention}.")
+        owner_text, trigger_text, is_owner = format_session_users(vc, ctx.author, ctx.guild)
+        if is_owner:
+            msg = f"{E.BTN_LOOP} Loop {state} by session author {trigger_text}."
+        else:
+            msg = f"{E.BTN_LOOP} Loop {state} by {trigger_text} (Session Author: {owner_text})."
+        await self.note(ctx, msg)
 
     @commands.hybrid_command(name="pause", usage="pause", help="Pauses the current song.")
     @blacklist_check()
@@ -1915,7 +2039,12 @@ class Music(commands.Cog):
             return
         vc.pause()
         await set_vc_status(vc.channel, f"{E.MUSIC} Paused: {vc.current.title}")
-        await self.note(ctx, f"Paused by {ctx.author.mention}.")
+        owner_text, trigger_text, is_owner = format_session_users(vc, ctx.author, ctx.guild)
+        if is_owner:
+            msg = f"{E.BTN_PAUSE} Paused by session author {trigger_text}."
+        else:
+            msg = f"{E.BTN_PAUSE} Paused by {trigger_text} (Session Author: {owner_text})."
+        await self.note(ctx, msg)
 
     @commands.hybrid_command(name="resume", aliases=["unpause"], usage="resume", help="Resumes the paused song.")
     @blacklist_check()
@@ -1926,11 +2055,16 @@ class Music(commands.Cog):
         if vc is None:
             return
         if not vc.paused:
-            await ctx.send(embed=embed_of("Player is not paused.", 0xFF0000))
+            await ctx.send(embed=embed_of(f"{E.WARNING} Player is not paused.", 0xFF0000))
             return
         vc.resume()
         await set_vc_status(vc.channel, f"{E.MUSIC} Playing: {vc.current.title}")
-        await self.note(ctx, f"Resumed by {ctx.author.mention}.")
+        owner_text, trigger_text, is_owner = format_session_users(vc, ctx.author, ctx.guild)
+        if is_owner:
+            msg = f"{E.BTN_RESUME} Resumed by session author {trigger_text}."
+        else:
+            msg = f"{E.BTN_RESUME} Resumed by {trigger_text} (Session Author: {owner_text})."
+        await self.note(ctx, msg)
 
     @commands.hybrid_command(name="skip", aliases=["next"], usage="skip", help="Skips the current song.")
     @blacklist_check()
@@ -1942,7 +2076,12 @@ class Music(commands.Cog):
             return
         if vc.autoplay or not vc.queue.is_empty:
             await ctx.defer()
-            await self.note(ctx, f"Skipped by {ctx.author.mention}.", next_card=True)
+            owner_text, trigger_text, is_owner = format_session_users(vc, ctx.author, ctx.guild)
+            if is_owner:
+                msg = f"{E.BTN_SKIP} Skipped by session author {trigger_text}."
+            else:
+                msg = f"{E.BTN_SKIP} Skipped by {trigger_text} (Session Author: {owner_text})."
+            await self.note(ctx, msg, next_card=True)
             await vc.skip()
         else:
             await ctx.send(embed=embed_of(f"{E.WARNING} No song is playing or in the queue to skip.", 0xFF0000))
@@ -1956,10 +2095,15 @@ class Music(commands.Cog):
         if vc is None:
             return
         if vc.queue.is_empty:
-            await ctx.send(embed=embed_of("Queue is empty.", 0xFF0000))
+            await ctx.send(embed=embed_of(f"{E.WARNING} Queue is empty.", 0xFF0000))
             return
         vc.queue.shuffle()
-        await self.note(ctx, f"Queue shuffled by {ctx.author.mention}.")
+        owner_text, trigger_text, is_owner = format_session_users(vc, ctx.author, ctx.guild)
+        if is_owner:
+            msg = f"{E.BTN_SHUFFLE} Queue shuffled by session author {trigger_text}."
+        else:
+            msg = f"{E.BTN_SHUFFLE} Queue shuffled by {trigger_text} (Session Author: {owner_text})."
+        await self.note(ctx, msg)
 
     @commands.hybrid_command(name="stop", usage="stop", help="Stops the current song and clears the queue.")
     @blacklist_check()
@@ -1971,9 +2115,23 @@ class Music(commands.Cog):
             return
         await set_vc_status(vc.channel, None)
         vc.queue.clear()
+        owner_text, trigger_text, is_owner = format_session_users(vc, ctx.author, ctx.guild)
+        vc._handled_disconnect = True
         self.forget_guild(ctx.guild.id)
         await vc.shutdown()
-        await ctx.send(embed=embed_of(f"Stopped and queue cleared by {ctx.author.mention} (**{ctx.author.display_name}**)."))
+        if is_owner:
+            desc = f"{E.BTN_STOP} Stopped and queue cleared by session author {trigger_text}."
+        else:
+            desc = (
+                f"{E.BTN_STOP} **Music Session Stopped**\n\n"
+                f"• **Session Author:** {owner_text}\n"
+                f"• **Triggered by:** {trigger_text}\n\n"
+                f"Stopped and queue cleared by {trigger_text}."
+            )
+        embed = embed_of(desc, 0xFF0000)
+        embed.set_author(name="Session Stopped", icon_url=self.client.user.display_avatar.url)
+        embed.set_footer(text=f"Thanks for choosing {config.NAME}!")
+        await ctx.send(embed=embed, allowed_mentions=discord.AllowedMentions(users=True))
 
     @commands.hybrid_command(
         name="volume",
@@ -1992,7 +2150,11 @@ class Music(commands.Cog):
             await ctx.send(embed=embed_of(f"{E.WARNING} Volume must be between {MIN_VOLUME} and {MAX_VOLUME}.", 0xFF0000))
             return
         vc.set_volume(level)  # one shared value: the Remix console / Vol button / card read the same player.volume
-        text = f"{E.VOICE} Volume set to {level}% by {ctx.author.mention}."
+        owner_text, trigger_text, is_owner = format_session_users(vc, ctx.author, ctx.guild)
+        if is_owner:
+            text = f"{E.VOICE} Volume set to {level}% by session author {trigger_text}."
+        else:
+            text = f"{E.VOICE} Volume set to {level}% by {trigger_text} (Session Author: {owner_text})."
         if level > 150:
             text += "\nAbove 150% loud tracks can distort."
         await self.note(ctx, text)
@@ -2034,7 +2196,12 @@ class Music(commands.Cog):
             await ctx.send(embed=embed_of(f"{E.WARNING} No Queue to clear.", 0xFF0000))
             return
         vc.queue.clear()
-        await self.note(ctx, "Queue has been cleared.", 0x1DB954)
+        owner_text, trigger_text, is_owner = format_session_users(vc, ctx.author, ctx.guild)
+        if is_owner:
+            msg = f"{E.TICK} Queue has been cleared by session author {trigger_text}."
+        else:
+            msg = f"{E.TICK} Queue has been cleared by {trigger_text} (Session Author: {owner_text})."
+        await self.note(ctx, msg, 0x1DB954)
 
     @commands.hybrid_command(name="replay", usage="replay", help="Replays the current song.")
     @blacklist_check()
@@ -2046,7 +2213,12 @@ class Music(commands.Cog):
             return
         await ctx.defer()
         await vc.seek(0)
-        await self.note(ctx, "Replaying the current track.", 0x1DB954)
+        owner_text, trigger_text, is_owner = format_session_users(vc, ctx.author, ctx.guild)
+        if is_owner:
+            msg = f"{E.BTN_REPLAY} Replaying the current track by session author {trigger_text}."
+        else:
+            msg = f"{E.BTN_REPLAY} Replaying the current track by {trigger_text} (Session Author: {owner_text})."
+        await self.note(ctx, msg, 0x1DB954)
 
     @commands.hybrid_command(name="join", aliases=["connect"], usage="join", help="Joins the voice channel.")
     @blacklist_check()
@@ -2054,14 +2226,18 @@ class Music(commands.Cog):
     @commands.cooldown(1, 3, commands.BucketType.user)
     async def join(self, ctx: commands.Context):
         if not ctx.author.voice or not ctx.author.voice.channel:
-            await ctx.send(embed=embed_of("You need to join a voice channel first.", 0xFF0000))
+            await ctx.send(embed=embed_of(f"{E.WARNING} You need to join a voice channel first.", 0xFF0000))
             return
         if ctx.voice_client is not None:
-            await ctx.send(embed=embed_of(f"I'm already connected to {ctx.voice_client.channel.mention}.", 0xFF0000))
+            await ctx.send(embed=embed_of(f"{E.WARNING} I'm already connected to {ctx.voice_client.channel.mention}.", 0xFF0000))
             return
         vc = await self.ensure_player(ctx)
         if vc is not None:
-            await ctx.send(embed=embed_of("Joined the voice channel.", 0x1DB954))
+            owner_text, trigger_text, is_owner = format_session_users(vc, ctx.author, ctx.guild)
+            embed = embed_of(f"{E.VOICE} Joined {vc.channel.mention} by session author {trigger_text}.", 0x1DB954)
+            embed.set_author(name="Session Connected", icon_url=self.client.user.display_avatar.url)
+            embed.set_footer(text=f"Thanks for choosing {config.NAME}!")
+            await ctx.send(embed=embed, allowed_mentions=discord.AllowedMentions(users=True))
 
     @commands.hybrid_command(
         name="247", aliases=["stay", "24/7"], usage="247", help="Toggles 24/7 mode: I stay in voice and keep playing songs with autoplay."
@@ -2074,12 +2250,22 @@ class Music(commands.Cog):
         if vc is None:
             return
         vc.stay = not vc.stay
+        owner_text, trigger_text, is_owner = format_session_users(vc, ctx.author, ctx.guild)
         if vc.stay:
             vc.autoplay = True
-            text = f"{E.TICK}  24/7 mode **enabled** by {ctx.author.mention}. I'll keep playing songs with autoplay and won't leave."
+            if is_owner:
+                text = f"{E.TICK} 24/7 mode **enabled** by session author {trigger_text}. I'll keep playing songs with autoplay and won't leave."
+            else:
+                text = f"{E.TICK} 24/7 mode **enabled** by {trigger_text} (Session Author: {owner_text}). I'll keep playing songs with autoplay and won't leave."
         else:
-            text = f"{E.TICK}  24/7 mode **disabled** by {ctx.author.mention}. I'll leave when idle or alone."
-        await ctx.send(embed=embed_of(text, 0x1DB954))
+            if is_owner:
+                text = f"{E.TICK} 24/7 mode **disabled** by session author {trigger_text}. I'll leave when idle or alone."
+            else:
+                text = f"{E.TICK} 24/7 mode **disabled** by {trigger_text} (Session Author: {owner_text}). I'll leave when idle or alone."
+        embed = embed_of(text, 0x1DB954)
+        embed.set_author(name="24/7 Mode", icon_url=self.client.user.display_avatar.url)
+        embed.set_footer(text=f"Thanks for choosing {config.NAME}!")
+        await ctx.send(embed=embed, allowed_mentions=discord.AllowedMentions(users=True))
 
     @commands.hybrid_command(
         name="disconnect", aliases=["dc", "leave"], usage="disconnect", help="Disconnects the bot from the voice channel."
@@ -2092,9 +2278,23 @@ class Music(commands.Cog):
         if vc is None:
             return
         await set_vc_status(vc.channel, None)
+        owner_text, trigger_text, is_owner = format_session_users(vc, ctx.author, ctx.guild)
+        vc._handled_disconnect = True
         self.forget_guild(ctx.guild.id)
         await vc.shutdown()
-        await ctx.send(embed=embed_of(f"Disconnected from the voice channel by {ctx.author.mention} (**{ctx.author.display_name}**).", 0x1DB954))
+        if is_owner:
+            desc = f"{E.BTN_STOP} Disconnected from the voice channel by session author {trigger_text}."
+        else:
+            desc = (
+                f"{E.BTN_STOP} **Voice Session Disconnected**\n\n"
+                f"• **Session Author:** {owner_text}\n"
+                f"• **Triggered by:** {trigger_text}\n\n"
+                f"Disconnected from the voice channel by {trigger_text}."
+            )
+        embed = embed_of(desc, 0x1DB954)
+        embed.set_author(name="Disconnected", icon_url=self.client.user.display_avatar.url)
+        embed.set_footer(text=f"Thanks for choosing {config.NAME}!")
+        await ctx.send(embed=embed, allowed_mentions=discord.AllowedMentions(users=True))
 
     @commands.hybrid_command(name="seek", usage="seek <percentage>", help="Seeks to a specific percentage of the song.")
     @blacklist_check()
@@ -2102,80 +2302,58 @@ class Music(commands.Cog):
     @commands.cooldown(1, 3, commands.BucketType.user)
     async def seek(self, ctx: commands.Context, percentage: int):
         if not 1 <= percentage <= 100:
-            await ctx.send(embed=embed_of("Please provide a percentage between 1 and 100.", 0xFF0000))
+            await ctx.send(embed=embed_of(f"{E.WARNING} Please provide a percentage between 1 and 100.", 0xFF0000))
             return
         vc = await self.control_player(ctx)
         if vc is None:
             return
         track = vc.current
         if track is None or not track.is_seekable:
-            await ctx.send(embed=embed_of("This track can't be seeked.", 0xFF0000))
+            await ctx.send(embed=embed_of(f"{E.WARNING} This track can't be seeked.", 0xFF0000))
             return
         await ctx.defer()
         await vc.seek(int(track.length * (percentage / 100)))
-        await self.note(ctx, f"Seeked to {percentage}% of the current track.", 0x1DB954)
+        owner_text, trigger_text, is_owner = format_session_users(vc, ctx.author, ctx.guild)
+        if is_owner:
+            msg = f"{E.TICK} Seeked to {percentage}% by session author {trigger_text}."
+        else:
+            msg = f"{E.TICK} Seeked to {percentage}% by {trigger_text} (Session Author: {owner_text})."
+        await self.note(ctx, msg, 0x1DB954)
 
     # ── voice events ────────────────────────────────────
     async def find_muter(self, guild: discord.Guild) -> Optional[discord.abc.User]:
-        """Best effort: who server-muted the bot (needs View Audit Log)."""
-        me = guild.me
-        if me is None and self.client.user is not None:
-            try:
-                me = await guild.fetch_member(self.client.user.id)
-            except Exception:
-                me = None
-        if not me or not (me.guild_permissions.view_audit_log or me.guild_permissions.administrator):
-            return None
-
-        now = discord.utils.utcnow()
+        """Best effort: who server-muted the bot."""
         try:
-            async for entry in guild.audit_logs(limit=5, action=discord.AuditLogAction.member_update):
-                if (now - entry.created_at).total_seconds() > 25:
-                    break
-                if getattr(entry, "target", None) is not None and entry.target.id == me.id:
+            async for entry in guild.audit_logs(limit=10, action=discord.AuditLogAction.member_update):
+                if getattr(entry, "target", None) is not None and entry.target.id == self.client.user.id:
                     if getattr(entry.after, "mute", None) is True:
                         return entry.user
-        except (discord.HTTPException, discord.Forbidden):
+        except Exception:
             pass
         return None
 
     async def find_disconnector(self, guild: discord.Guild) -> Optional[discord.abc.User]:
-        """Best effort: who disconnected / moved the bot (needs View Audit Log)."""
-        me = guild.me
-        if me is None and self.client.user is not None:
-            try:
-                me = await guild.fetch_member(self.client.user.id)
-            except Exception:
-                me = None
-        if not me or not (me.guild_permissions.view_audit_log or me.guild_permissions.administrator):
-            return None
-
-        for attempt in range(2):
-            now = discord.utils.utcnow()
-            try:
-                for action in (
-                    discord.AuditLogAction.member_disconnect,
-                    discord.AuditLogAction.member_move,
-                    discord.AuditLogAction.channel_delete,
-                    discord.AuditLogAction.kick,
-                ):
-                    async for entry in guild.audit_logs(limit=5, action=action):
-                        if (now - entry.created_at).total_seconds() > 25:
-                            break
-                        if action is discord.AuditLogAction.member_disconnect:
+        """Best effort: who disconnected / moved / kicked the bot."""
+        try:
+            for action in (
+                discord.AuditLogAction.member_disconnect,
+                discord.AuditLogAction.member_move,
+                discord.AuditLogAction.kick,
+                discord.AuditLogAction.channel_delete,
+            ):
+                async for entry in guild.audit_logs(limit=10, action=action):
+                    if action == discord.AuditLogAction.member_disconnect:
+                        return entry.user
+                    elif action == discord.AuditLogAction.member_move:
+                        if getattr(entry, "target", None) is None or getattr(entry, "target", None).id == self.client.user.id:
                             return entry.user
-                        elif action is discord.AuditLogAction.member_move:
-                            if getattr(entry, "target", None) is None or getattr(entry, "target", None).id == me.id:
-                                return entry.user
-                        elif action is discord.AuditLogAction.kick:
-                            if entry.target and entry.target.id == me.id:
-                                return entry.user
-                        elif action is discord.AuditLogAction.channel_delete:
+                    elif action == discord.AuditLogAction.kick:
+                        if getattr(entry, "target", None) is not None and entry.target.id == self.client.user.id:
                             return entry.user
-            except (discord.HTTPException, discord.Forbidden):
-                pass
-            if attempt < 1:
-                await asyncio.sleep(1)
+                    elif action == discord.AuditLogAction.channel_delete:
+                        return entry.user
+        except Exception:
+            pass
         return None
 
     @commands.Cog.listener()
@@ -2217,9 +2395,18 @@ class Music(commands.Cog):
                 vc.transferred = True
                 if vc.ctx is not None:
                     self._sessions[vc.guild.id] = (member.id, vc.ctx.channel.id)
+                    old_member = member.guild.get_member(old_id) if old_id else None
+                    old_text = f"{old_member.mention} (**{old_member.display_name}**)" if old_member else (f"<@{old_id}>" if old_id else "Session Author")
+                    new_text = f"{member.mention} (**{member.display_name}**)"
                     try:
                         embed = discord.Embed(
-                            description=f"{E.WARNING} <@{old_id}> is not in the voice channel. Now music session control taken by {member.mention}.",
+                            description=(
+                                f"{E.WARNING} **Session Control Transferred**\n\n"
+                                f"• **Session Author:** {old_text}\n"
+                                f"• **New Controller:** {new_text}\n\n"
+                                f"Session author {old_text} is not in the voice channel. "
+                                f"Music session control has been taken by {new_text}."
+                            ),
                             color=0xFF0000,
                         )
                         embed.set_author(name="Session Control Transferred", icon_url=self.client.user.display_avatar.url)
@@ -2249,14 +2436,31 @@ class Music(commands.Cog):
 
                 await asyncio.sleep(1)
                 by = await self.find_muter(member.guild)
-                if by is not None:
-                    who = f"**{by.display_name}** ({by.mention})"
-                else:
-                    who = "**a server moderator**"
+                if by is None and before.channel is not None:
+                    others = [
+                        before.channel.guild.get_member(uid)
+                        for uid in before.channel.voice_states
+                        if uid != self.client.user.id
+                    ]
+                    others = [m for m in others if m and not m.bot]
+                    if len(others) == 1:
+                        by = others[0]
 
-                owner_tag = f"<@{owner_id}>, " if owner_id else ""
+                owner_member = member.guild.get_member(owner_id) if owner_id else None
+                owner_text = f"{owner_member.mention} (**{owner_member.display_name}**)" if owner_member else (f"<@{owner_id}>" if owner_id else "Session Author")
+
+                if by is not None:
+                    trigger_text = f"{by.mention} (**{by.display_name}**)"
+                else:
+                    trigger_text = "Unknown User (Grant bot 'View Audit Log' permission to tag exact user)"
+
                 embed = discord.Embed(
-                    description=f"{E.WARNING} {owner_tag}I have been server muted by {who}. Pausing music session and disconnecting from voice.",
+                    description=(
+                        f"{E.WARNING} **Bot Server Muted — Session Paused**\n\n"
+                        f"• **Session Author:** {owner_text}\n"
+                        f"• **Triggered by:** {trigger_text}\n\n"
+                        f"I have been server muted by {trigger_text}. Pausing music session and disconnecting from voice."
+                    ),
                     color=0xFF0000,
                 )
                 embed.set_author(name="Server Muted", icon_url=self.client.user.display_avatar.url)
@@ -2296,13 +2500,31 @@ class Music(commands.Cog):
 
             await asyncio.sleep(1)  # let the audit log entry appear
             by = await self.find_disconnector(member.guild)
+            if by is None and before.channel is not None:
+                others = [
+                    before.channel.guild.get_member(uid)
+                    for uid in before.channel.voice_states
+                    if uid != self.client.user.id
+                ]
+                others = [m for m in others if m and not m.bot]
+                if len(others) == 1:
+                    by = others[0]
+
+            owner_member = member.guild.get_member(owner_id) if owner_id else None
+            owner_text = f"{owner_member.mention} (**{owner_member.display_name}**)" if owner_member else (f"<@{owner_id}>" if owner_id else "Session Author")
+
             if by is not None:
-                who = f"**{by.display_name}** ({by.mention})"
+                trigger_text = f"{by.mention} (**{by.display_name}**)"
             else:
-                who = "**a server moderator**"
+                trigger_text = "Unknown User (Grant bot 'View Audit Log' permission to tag exact user)"
 
             embed = discord.Embed(
-                description=f"{E.WARNING} <@{owner_id}>, I have been disconnected by {who}. Your music session has ended.",
+                description=(
+                    f"{E.WARNING} **Bot Disconnected — Session Ended**\n\n"
+                    f"• **Session Author:** {owner_text}\n"
+                    f"• **Triggered by:** {trigger_text}\n\n"
+                    f"I have been disconnected from voice by {trigger_text}. Your music session has ended."
+                ),
                 color=0xFF0000,
             )
             embed.set_author(name="Disconnected", icon_url=self.client.user.display_avatar.url)
