@@ -89,76 +89,40 @@ class HelpCommand(commands.HelpCommand):
       return
 
     
-    embed = discord.Embed(description=f"{E.LOADING} **Loading Help module...**", color=color)
-    ok = await self.context.reply(embed=embed)          
-    data = await getConfig(self.context.guild.id)
-    prefix = data["prefix"]
-    filtered = await self.filter_commands(self.context.bot.walk_commands(),
-                                              sort=True)
-    slash = len([
-  cmd for cmd in self.context.bot.tree.get_commands() 
-  if isinstance(cmd, app_commands.Command)
-])
-    
-    embed = discord.Embed(
-      title="", color=config.EMBED_COLOR)
+    data = await getConfig(self.context.guild.id) if self.context.guild else {"prefix": config.DEFAULT_PREFIX}
+    prefix = data.get("prefix", config.DEFAULT_PREFIX)
 
-    invite = discord.utils.oauth_url(
-      self.context.bot.user.id,
-      permissions=discord.Permissions(
-        view_channel=True, send_messages=True, embed_links=True, attach_files=True,
-        read_message_history=True, add_reactions=True, use_external_emojis=True,
-        connect=True, speak=True, set_voice_channel_status=True),
-      scopes=("bot", "applications.commands"))
+    view = vhelp.HelpView(self.context, prefix)
+    embed = view.get_embed("home")
+    view.message = await self.context.reply(embed=embed, view=view, mention_author=False)
 
-    embed.add_field(name="📜 __**General Info:**__", value= f"🔴 Server Prefix:  **{prefix}** \n🔴 Total Commands: **{len(set(self.context.bot.walk_commands()))}**\n🔴 Total Slash Commands: **{slash}**\n🔴 **[Invite me]({invite})**\n\n❓ __**How do you use me?**__\n>>> `{prefix}help <command/module>` to get more info regarding that command/module\nFor example: `{prefix}help play`\n\n")
-
-    embed.add_field(name="⭐ __**My Features**__", value=">>> 🎵 Play songs and playlists from YouTube, SoundCloud, JioSaavn & more\n📃 Queue, shuffle, loop and autoplay\n🎛️ Audio filters (nightcore, bassboost, vaporwave...)\n⏯️ Interactive player buttons\n⚡ Prefix and slash commands")
-    embed.add_field(name="➡️ __**How to get help?**__", value=">>> ♨️ Use the Buttons, to swap the Pages\n♨️ Use the Menu to select all Help Pages, you want to display")
-    embed.set_footer(
-      text=f"Requested By {self.context.author}",
-      icon_url=self.context.author.display_avatar.url
-    )
-    embed.set_author(name=self.context.author, icon_url=self.context.author.display_avatar.url)
-
-    #embed.timestamp = discord.utils.utcnow()
-    view = vhelp.View(mapping=mapping,
-                          ctx=self.context,
-                          homeembed=embed,
-                          ui=2)
-    await asyncio.sleep(0.5)
-    await ok.edit(embed=embed,view=view)
-
-
-
-  
   async def send_command_help(self, command):
     ctx = self.context
     check_ignore = await ignore_check().predicate(ctx)
     check_blacklist = await blacklist_check().predicate(ctx)
 
-    if not check_blacklist:
+    if not check_blacklist or not check_ignore:
       return
 
-    if not check_ignore:
-      await self.send_ignore_message(ctx, "command")
-      return
-    
-    sonu = f">>> {command.help}" if command.help else '>>> No Help Provided...'
+    data = await getConfig(ctx.guild.id) if ctx.guild else {"prefix": config.DEFAULT_PREFIX}
+    prefix = data.get("prefix", config.DEFAULT_PREFIX)
+
     embed = discord.Embed(
-        description=
-        f"""```xml
-<[] = optional | ‹› = required\nDon't type these while using Commands>```\n{sonu}""",
-        color=color)
-    alias = ' | '.join(command.aliases)
+        title=f"{E.MUSIC} Command: {command.qualified_name}",
+        description=command.help or "No description provided for this command.",
+        color=config.EMBED_COLOR,
+    )
+    embed.set_author(name=f"{config.NAME} • Command Help", icon_url=self.context.bot.user.display_avatar.url)
+    embed.add_field(
+        name=f"{E.TICK} Usage",
+        value=f"`{prefix}{command.qualified_name} {command.signature}`".strip(),
+        inline=False,
+    )
+    if command.aliases:
+        alias_str = ", ".join(f"`{a}`" for a in command.aliases)
+        embed.add_field(name=f"{E.VOICE} Aliases", value=alias_str, inline=False)
 
-    embed.add_field(name="**Aliases**",
-                      value=f"{alias}" if command.aliases else "No Aliases",
-                      inline=False)
-    embed.add_field(name="**Usage**",
-                      value=f"`{self.context.prefix}{command.signature}`\n")
-    embed.set_author(name=f"{command.qualified_name.title()} Command",
-                       icon_url=self.context.bot.user.display_avatar.url)
+    embed.set_footer(text=f"Thanks for choosing {config.NAME}!")
     await self.context.reply(embed=embed, mention_author=False)
 
   def get_command_signature(self, command: commands.Command) -> str:
