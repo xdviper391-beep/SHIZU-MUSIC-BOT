@@ -1921,7 +1921,7 @@ class Music(commands.Cog):
         vc.queue.clear()
         self.forget_guild(ctx.guild.id)
         await vc.shutdown()
-        await ctx.send(embed=embed_of(f"Stopped and queue cleared by {ctx.author.mention}."))
+        await ctx.send(embed=embed_of(f"Stopped and queue cleared by {ctx.author.mention} (**{ctx.author.display_name}**)."))
 
     @commands.hybrid_command(
         name="volume",
@@ -2042,7 +2042,7 @@ class Music(commands.Cog):
         await set_vc_status(vc.channel, None)
         self.forget_guild(ctx.guild.id)
         await vc.shutdown()
-        await ctx.send(embed=embed_of("Disconnected from the voice channel.", 0x1DB954))
+        await ctx.send(embed=embed_of(f"Disconnected from the voice channel by {ctx.author.mention} (**{ctx.author.display_name}**).", 0x1DB954))
 
     @commands.hybrid_command(name="seek", usage="seek <percentage>", help="Seeks to a specific percentage of the song.")
     @blacklist_check()
@@ -2066,18 +2066,41 @@ class Music(commands.Cog):
     # ── voice events ────────────────────────────────────
     async def find_disconnector(self, guild: discord.Guild) -> Optional[discord.abc.User]:
         """Best effort: who disconnected / moved the bot (needs View Audit Log)."""
-        if not guild.me.guild_permissions.view_audit_log:
+        me = guild.me
+        if me is None and self.client.user is not None:
+            try:
+                me = await guild.fetch_member(self.client.user.id)
+            except Exception:
+                me = None
+        if not me or not (me.guild_permissions.view_audit_log or me.guild_permissions.administrator):
             return None
-        now = discord.utils.utcnow()
-        try:
-            for action in (discord.AuditLogAction.member_disconnect, discord.AuditLogAction.member_move):
-                async for entry in guild.audit_logs(limit=5, action=action):
-                    if (now - entry.created_at).total_seconds() > 15:
-                        break
-                    if action is discord.AuditLogAction.member_disconnect:
-                        return entry.user  # the bulk-disconnect entry does not name targets
-        except discord.HTTPException:
-            pass
+
+        for attempt in range(3):
+            now = discord.utils.utcnow()
+            try:
+                for action in (
+                    discord.AuditLogAction.member_disconnect,
+                    discord.AuditLogAction.member_move,
+                    discord.AuditLogAction.channel_delete,
+                    discord.AuditLogAction.kick,
+                ):
+                    async for entry in guild.audit_logs(limit=5, action=action):
+                        if (now - entry.created_at).total_seconds() > 25:
+                            break
+                        if action is discord.AuditLogAction.member_disconnect:
+                            return entry.user
+                        elif action is discord.AuditLogAction.member_move:
+                            if getattr(entry, "target", None) is None or getattr(entry, "target", None).id == me.id:
+                                return entry.user
+                        elif action is discord.AuditLogAction.kick:
+                            if entry.target and entry.target.id == me.id:
+                                return entry.user
+                        elif action is discord.AuditLogAction.channel_delete:
+                            return entry.user
+            except (discord.HTTPException, discord.Forbidden):
+                pass
+            if attempt < 2:
+                await asyncio.sleep(1)
         return None
 
     @commands.Cog.listener()
@@ -2142,7 +2165,10 @@ class Music(commands.Cog):
                 return
             await asyncio.sleep(1)  # let the audit log entry appear
             by = await self.find_disconnector(member.guild)
-            who = by.mention if by is not None else "**a user**"
+            if by is not None:
+                who = f"**{by.display_name}** ({by.mention})"
+            else:
+                who = "**someone** (Grant bot 'View Audit Log' permission to show username)"
             embed = embed_of(
                 f"{E.WARNING} I'VE BEEN DISCONNECTED BY {who}. YOUR MUSIC SESSION HAS BEEN ENDED.",
                 0xFF0000,

@@ -118,7 +118,7 @@ class TestingMusic(commands.AutoShardedBot):
             permissions=discord.Permissions(
                 view_channel=True, send_messages=True, embed_links=True, attach_files=True,
                 read_message_history=True, add_reactions=True, use_external_emojis=True,
-                connect=True, speak=True, set_voice_channel_status=True,
+                connect=True, speak=True, set_voice_channel_status=True, view_audit_log=True,
             ),
             scopes=("bot", "applications.commands"),
         )
