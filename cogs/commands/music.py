@@ -161,6 +161,44 @@ def create_progress_bar(completed: float, total: float, length: int = 10) -> str
     return "█" * filled + "░" * (length - filled)
 
 
+def clean_song_name(title: Optional[str]) -> str:
+    """Extract a simple, clean song name without artist, actors, movie names, or video noise."""
+    if not title:
+        return "Music"
+    # 1. Take first part before pipe, bullet, or slash
+    t = re.split(r"\s*[|•]\s*", title)[0].strip()
+
+    # Helper to strip bracketed noise
+    noise_pattern = (
+        r"[\(\[\{]\s*(?:official\s*(?:music\s*)?video|official\s*audio|lyrics?|lyric\s*video|"
+        r"audio|video|visualizer|full\s*(?:video\s*)?song|video\s*song|4k|hd|remastered|"
+        r"extended|feat\.?.*?|ft\.?.*?|prod\.?.*?|from\s+.*?|from\s*[\"'].*?[\"']|"
+        r"music\s*video|official\s*video\s*remastered)\s*[\)\]\}]"
+    )
+    t = re.sub(noise_pattern, "", t, flags=re.IGNORECASE).strip()
+
+    # 2. Strip 'ft.' or 'feat.' or 'featuring' at end
+    t = re.sub(r"\s+(?:feat|ft|featuring)\.?\s+.*$", "", t, flags=re.IGNORECASE).strip()
+
+    # 3. Handle 'Artist - Song' or 'Song - Artist' or 'Song - Tag'
+    dash_split = re.split(r"\s+[-–—]\s+", t)
+    if len(dash_split) == 2:
+        p1, p2 = dash_split[0].strip(), dash_split[1].strip()
+        p2_clean = re.sub(noise_pattern, "", p2, flags=re.IGNORECASE).strip()
+        if re.search(r"^(?:video\s*song|full\s*song|audio|video|lyrics?|music)$", p2_clean, re.IGNORECASE):
+            t = p1
+        elif re.search(r"^(?:video\s*song|full\s*song|audio|video|lyrics?|music)$", p1, re.IGNORECASE):
+            t = p2_clean
+        else:
+            t = p2_clean if len(p2_clean) >= 2 else p1
+    elif len(dash_split) > 2:
+        t = dash_split[-1].strip() or dash_split[0].strip()
+
+    t = re.sub(noise_pattern, "", t, flags=re.IGNORECASE).strip()
+    t = re.sub(r"[\"'\u201c\u201d]", "", t).strip(" -–—:;,")
+    return t or title
+
+
 async def set_vc_status(channel: Optional[discord.abc.GuildChannel], text: Optional[str]) -> None:
     """Set (or clear) the voice-channel status. Silently ignored if the bot lacks permission."""
     if channel is None:
@@ -1045,11 +1083,11 @@ class MusicControlView(_PlayerView):
         owner_text, trigger_text, is_owner = format_session_users(self.player, interaction.user, interaction.guild)
         if self.player.paused:
             self.player.resume()
-            await set_vc_status(self.player.channel, f"{E.MUSIC} Playing: {title}")
+            await set_vc_status(self.player.channel, f"🎶 {clean_song_name(title)}")
             text = f"{E.BTN_RESUME} Resumed by session author {trigger_text}." if is_owner else f"{E.BTN_RESUME} Resumed by {trigger_text} (Session Author: {owner_text})."
         else:
             self.player.pause()
-            await set_vc_status(self.player.channel, f"{E.MUSIC} Paused: {title}")
+            await set_vc_status(self.player.channel, f"⏸️ {clean_song_name(title)}")
             text = f"{E.BTN_PAUSE} Paused by session author {trigger_text}." if is_owner else f"{E.BTN_PAUSE} Paused by {trigger_text} (Session Author: {owner_text})."
         await interaction.response.edit_message(**self.refresh(text))
 
@@ -1704,7 +1742,7 @@ class Music(commands.Cog):
         try:
             if not player.is_connected() or player.current is not track:
                 return  # skipped / replaced before we got to announce it
-            await set_vc_status(player.channel, f"{E.MUSIC} Playing: {track.title}")
+            await set_vc_status(player.channel, f"🎶 {clean_song_name(track.title)}")
             if track.uri:
                 self.recent.setdefault(player.guild.id, deque(maxlen=60)).append(track.uri)
             ctx = player.ctx
@@ -2038,7 +2076,8 @@ class Music(commands.Cog):
             await ctx.send(embed=embed_of(f"{E.WARNING} Nothing is playing or already paused.", 0xFF0000))
             return
         vc.pause()
-        await set_vc_status(vc.channel, f"{E.MUSIC} Paused: {vc.current.title}")
+        song_title = vc.current.title if vc.current else None
+        await set_vc_status(vc.channel, f"⏸️ {clean_song_name(song_title)}")
         owner_text, trigger_text, is_owner = format_session_users(vc, ctx.author, ctx.guild)
         if is_owner:
             msg = f"{E.BTN_PAUSE} Paused by session author {trigger_text}."
@@ -2058,7 +2097,8 @@ class Music(commands.Cog):
             await ctx.send(embed=embed_of(f"{E.WARNING} Player is not paused.", 0xFF0000))
             return
         vc.resume()
-        await set_vc_status(vc.channel, f"{E.MUSIC} Playing: {vc.current.title}")
+        song_title = vc.current.title if vc.current else None
+        await set_vc_status(vc.channel, f"🎶 {clean_song_name(song_title)}")
         owner_text, trigger_text, is_owner = format_session_users(vc, ctx.author, ctx.guild)
         if is_owner:
             msg = f"{E.BTN_RESUME} Resumed by session author {trigger_text}."

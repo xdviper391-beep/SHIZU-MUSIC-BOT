@@ -57,7 +57,7 @@ class HelpCategorySelect(discord.ui.Select):
                 label="Server Configuration",
                 value="settings",
                 description="Custom server prefix, permissions & session controls",
-                emoji="⚙️",
+                emoji="🛠️",
             ),
             discord.SelectOption(
                 label="Bot Info & Connectivity",
@@ -155,7 +155,7 @@ class HelpView(discord.ui.View):
 
         if category == "music":
             embed = discord.Embed(
-                title=f"{E.MUSIC} Music & Playback Commands",
+                title="🎵 Music & Playback Commands",
                 description=(
                     "Crystal-clear audio streaming with responsive controls. "
                     f"Use `{p}<command>` or `/slash` commands.\n\u200b"
@@ -164,7 +164,7 @@ class HelpView(discord.ui.View):
             )
             embed.set_author(name=f"{config.NAME} • Command Center", icon_url=bot_avatar)
             embed.add_field(
-                name=f"{E.MUSIC} Playback Controls",
+                name="▶️ Playback Controls",
                 value=(
                     f"• `{p}play <song/url>` — Stream music from YouTube, Spotify, SoundCloud, JioSaavn\n"
                     f"• `{p}pause` — Pause current playback stream\n"
@@ -172,12 +172,12 @@ class HelpView(discord.ui.View):
                     f"• `{p}stop` — Stop playback, clear queue & leave voice\n"
                     f"• `{p}skip` — Skip to the next queued track\n"
                     f"• `{p}replay` — Restart current track from 0:00\n"
-                    f"• `{p}seek <time/%>` — Jump to a specific second or percentage"
+                    f"• `{p}seek <percentage>` — Jump to a specific percentage"
                 ),
                 inline=False,
             )
             embed.add_field(
-                name=f"{E.VOICE} Queue & Navigation",
+                name="📃 Queue & Track Management",
                 value=(
                     f"• `{p}nowplaying` (`{p}np`) — Show current Pillow banner & live track info\n"
                     f"• `{p}queue` — Display all upcoming tracks with page navigation\n"
@@ -189,7 +189,7 @@ class HelpView(discord.ui.View):
                 inline=False,
             )
             embed.add_field(
-                name=f"{E.TICK} Voice Channel & Session",
+                name="🔊 Voice & Session Controls",
                 value=(
                     f"• `{p}join` — Summon the bot to your current voice channel\n"
                     f"• `{p}disconnect` — Disconnect the bot from voice\n"
@@ -206,7 +206,7 @@ class HelpView(discord.ui.View):
 
         elif category == "remix":
             embed = discord.Embed(
-                title=f"{E.REMIX_BTN} Audio Effects & Filters",
+                title="🎛️ Audio Effects & Filters",
                 description=(
                     "Studio-grade audio processing powered by custom FFmpeg filter chains. "
                     "All effects apply in real-time with zero audio buffering.\n\u200b"
@@ -215,7 +215,7 @@ class HelpView(discord.ui.View):
             )
             embed.set_author(name=f"{config.NAME} • Command Center", icon_url=bot_avatar)
             embed.add_field(
-                name=f"{E.REMIX_BTN} Interactive Remix Console",
+                name="🎛️ Interactive Remix Console",
                 value=(
                     f"• `{p}remix` (aliases: `console`, `fxpanel`)\n"
                     "  Opens an interactive button console to toggle 8D, Lofi, Nightcore, "
@@ -224,7 +224,7 @@ class HelpView(discord.ui.View):
                 inline=False,
             )
             embed.add_field(
-                name=f"{E.REMIX_BASS} Bassboost & Equalizer",
+                name="🔊 Bassboost & Volume Gain",
                 value=(
                     f"• `{p}bass <0-25>` — Set exact hardware bass boost level in dB\n"
                     f"• `{p}volume <1-300>` — Digital output gain percentage"
@@ -232,7 +232,7 @@ class HelpView(discord.ui.View):
                 inline=False,
             )
             embed.add_field(
-                name=f"{E.REMIX_8D} Filter Presets",
+                name="✨ Filter Presets",
                 value=(
                     f"• `{p}fx <preset|off>` — Instant toggle for presets (`lofi`, `nightcore`, `8d`, `atmos`, `crystal`, `deep`)\n"
                     f"• `{p}filter enable` — Open dropdown menu to choose and activate presets\n"
@@ -248,15 +248,15 @@ class HelpView(discord.ui.View):
 
         elif category == "settings":
             embed = discord.Embed(
-                title=f"{E.TICK} Server Configuration",
+                title="🛠️ Server Configuration",
                 description=(
-                    "Custom guild settings, prefix configuration, and session security.\n\u200b"
+                    "Step-by-step instructions to configure voice permissions, custom prefix, and session controls.\n\u200b"
                 ),
                 color=config.EMBED_COLOR,
             )
             embed.set_author(name=f"{config.NAME} • Command Center", icon_url=bot_avatar)
             embed.add_field(
-                name=f"{E.TICK} Prefix Settings",
+                name="🔧 Custom Prefix Settings",
                 value=(
                     f"• `{p}setprefix <new_prefix>` — Set a custom prefix for this server *(Requires Manage Server)*\n"
                     f"• `{p}prefix` — Check the current prefix active in this server"
@@ -264,11 +264,11 @@ class HelpView(discord.ui.View):
                 inline=False,
             )
             embed.add_field(
-                name=f"{E.VOICE} Smart Session Protection",
+                name="🛡️ Smart Session Protection",
                 value=(
                     "• **Session Ownership** — The member who requests music controls buttons & playback\n"
-                    "• **Smart Transfer** — Session automatically transfers to listeners if the owner leaves\n"
-                    "• **Server Mute Protection** — Auto-pauses and cleans up UI if bot is muted\n"
+                    "• **Smart Handover** — Session automatically transfers to listeners if the owner leaves\n"
+                    "• **Server Mute Protection** — Cleanly pauses and disconnects if bot is muted\n"
                     "• **Auto Offline Alert** — Announces when the bot is restarting and edits back when online"
                 ),
                 inline=False,
@@ -284,7 +284,7 @@ class HelpView(discord.ui.View):
             guilds = len(self.bot.guilds)
             vcs = len(self.bot.voice_clients)
             embed = discord.Embed(
-                title=f"{E.ONLINE} System Information & Links",
+                title="ℹ️ System Information & Links",
                 description=(
                     "Real-time system diagnostics and connectivity stats.\n\u200b"
                 ),
@@ -292,7 +292,7 @@ class HelpView(discord.ui.View):
             )
             embed.set_author(name=f"{config.NAME} • Command Center", icon_url=bot_avatar)
             embed.add_field(
-                name=f"{E.ONLINE} Connectivity & Statistics",
+                name="📊 Connectivity & Statistics",
                 value=(
                     f"• **Gateway Latency:** `{latency} ms`\n"
                     f"• **Servers Connected:** `{guilds}` Guilds\n"
@@ -302,14 +302,14 @@ class HelpView(discord.ui.View):
                 inline=False,
             )
             embed.add_field(
-                name=f"{E.TICK} Supported Platforms",
+                name="🌐 Supported Streaming Platforms",
                 value=(
-                    f"{E.SPOTIFY} **Spotify** • {E.YOUTUBE} **YouTube** • {E.SOUNDCLOUD} **SoundCloud** • {E.JIOSAAVN} **JioSaavn**"
+                    f"• **Spotify** • **YouTube** • **SoundCloud** • **JioSaavn**"
                 ),
                 inline=False,
             )
             embed.add_field(
-                name=f"{E.MUSIC} Developer Credits",
+                name="👑 Developer Credits",
                 value="Developed with ❤️ by **viper & prashu**.",
                 inline=False,
             )
@@ -322,19 +322,21 @@ class HelpView(discord.ui.View):
         # Default: Home Overview
         total_cmds = len(set(self.bot.walk_commands()))
         slash_cmds = len(self.bot.tree.get_commands())
+        invite_link = _invite_url(self.bot)
         embed = discord.Embed(
             description=(
-                f"{E.MUSIC} **Welcome to {config.NAME} Help Center!**\n"
-                "Next-generation 24/7 Discord audio streaming with rich remix audio effects, "
-                "custom Pillow banners, and seamless voice controls.\n\n"
-                f"{E.VOICE} **Server Prefix:** `{p}` or slash (`/`)\n"
-                f"{E.TICK} **Commands Available:** `{total_cmds}` Prefix • `{slash_cmds}` Slash\n"
-                f"{E.ONLINE} **System Status:** `Operational • 24/7 Active`\n\n"
+                f"### 🎵 **Welcome to {config.NAME} Help Center!**\n"
+                "High-quality 24/7 music streaming with audio effects and voice controls.\n\n"
+                "**General Info:**\n"
+                f"• **Server Prefix:** `{p}` or slash (`/`)\n"
+                f"• **Commands Available:** `{total_cmds}` Prefix • `{slash_cmds}` Slash\n"
+                f"• **System Status:** `Operational • 24/7 Active`\n"
+                f"• **Invite Link:** [Invite {config.NAME} to your server]({invite_link})\n\n"
                 "__**Select a category from the dropdown below to explore:**__\n"
-                f"• {E.MUSIC} **Music & Playback** — Playback controls, queue & loop\n"
-                f"• {E.REMIX_BTN} **Remix & Audio FX** — Interactive console, bassboost & filters\n"
-                f"• {E.TICK} **Server Configuration** — Custom prefix & session protection\n"
-                f"• {E.ONLINE} **Bot Info & Connectivity** — System specs, sources & latency"
+                f"• 🎵 **Music Commands** — Playback controls, queue & loop\n"
+                f"• 🎛️ **Remix & Audio FX** — Interactive console, bassboost & filters\n"
+                f"• 🛠️ **Server Configuration** — Custom prefix & session protection\n"
+                f"• ℹ️ **Bot Info & Connectivity** — System specs, sources & latency"
             ),
             color=config.EMBED_COLOR,
         )
@@ -349,7 +351,7 @@ class HelpView(discord.ui.View):
             inline=False,
         )
         embed.set_footer(
-            text=f"Page 1/5 • Select a category from the menu below • Thanks for choosing {config.NAME}!",
+            text=f"Page 1/5 • Select what you need help with below • Thanks for choosing {config.NAME}!",
             icon_url=bot_avatar,
         )
         return embed
