@@ -125,3 +125,6 @@ ENABLE_JOIN_DM = _env_bool("ENABLE_JOIN_DM", True)
 ENABLE_REMOVE_DM = _env_bool("ENABLE_REMOVE_DM", True)
 ENABLE_FEEDBACK_DM = _env_bool("ENABLE_FEEDBACK_DM", True)
 FEEDBACK_COOLDOWN = _env_int("FEEDBACK_COOLDOWN", 86400) or 86400
+
+# ── Optional Proxy for Discord API (to bypass datacenter IP bans) ─
+DISCORD_PROXY = _env("DISCORD_PROXY") or _env("HTTPS_PROXY") or _env("HTTP_PROXY")

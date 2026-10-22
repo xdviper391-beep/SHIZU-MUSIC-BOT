@@ -38,6 +38,7 @@ class ShizuMusic(commands.AutoShardedBot):
             command_prefix=self.get_prefix,
             case_insensitive=True,
             intents=intents,
+            proxy=config.DISCORD_PROXY,
             status=discord.Status.do_not_disturb,
             activity=discord.Activity(
                 type=discord.ActivityType.playing,
