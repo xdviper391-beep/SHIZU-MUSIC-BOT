@@ -91,11 +91,17 @@ if not YTDL_COOKIEFILE:
             YTDL_COOKIEFILE = str(_candidate.resolve())
             break
 
-# ── Public Lavalink Node ─────────────────────────────────
+# ── Lavalink Node (Track & Metadata Resolver) ─────────────
 LAVALINK_HOST = _env("LAVALINK_HOST")
+if LAVALINK_HOST.startswith("http://"):
+    LAVALINK_HOST = LAVALINK_HOST[7:]
+elif LAVALINK_HOST.startswith("https://"):
+    LAVALINK_HOST = LAVALINK_HOST[8:]
+LAVALINK_HOST = LAVALINK_HOST.rstrip("/")
 LAVALINK_PORT = _env_int("LAVALINK_PORT", 443) or 443
 LAVALINK_PASSWORD = _env("LAVALINK_PASSWORD")
 LAVALINK_SECURE = _env_bool("LAVALINK_SECURE", True)
+YOUTUBE_REFRESH_TOKEN = _env("YOUTUBE_REFRESH_TOKEN")
 
 # ── Optional Spotify fallback ────────────────────────────
 SPOTIFY_CLIENT_ID = _env("SPOTIFY_CLIENT_ID")

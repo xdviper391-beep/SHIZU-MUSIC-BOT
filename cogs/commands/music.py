@@ -27,6 +27,7 @@ import shlex
 import shutil
 import sys
 import time
+import urllib.parse
 from collections import deque
 from dataclasses import dataclass, field
 from functools import partial
@@ -419,7 +420,61 @@ async def resolve_track(track: Track) -> None:
         track.apply_info(_first_entry(await ytdl_extract(f"scsearch1:{phrase}", SINGLE_OPTS)))
 
 
+def _track_from_lavalink_info(info: dict) -> Optional[Track]:
+    if not info or not info.get("uri"):
+        return None
+    return Track(
+        title=info.get("title") or "Unknown title",
+        author=info.get("author") or "",
+        uri=info.get("uri"),
+        length=max(0, int(info.get("length") or 0)),
+        artwork=info.get("artworkUrl"),
+        is_stream=bool(info.get("isStream")),
+        source=str(info.get("sourceName") or "youtube").lower(),
+    )
+
+
+async def lavalink_load_tracks(query: str, count: int = 10) -> Optional[tuple[Optional[str], list[Track]]]:
+    """Resolve a query or link via the configured Lavalink node (which uses the YouTube OAuth refresh token)."""
+    if not config.LAVALINK_HOST:
+        return None
+    scheme = "https" if config.LAVALINK_SECURE else "http"
+    port = f":{config.LAVALINK_PORT}" if config.LAVALINK_PORT not in (80, 443) else ""
+    ident = query if _is_url(query) else f"ytsearch:{query}"
+    url = f"{scheme}://{config.LAVALINK_HOST}{port}/v4/loadtracks?identifier=" + urllib.parse.quote(ident)
+    headers = {"Authorization": config.LAVALINK_PASSWORD}
+    timeout = aiohttp.ClientTimeout(total=8)
+    try:
+        async with aiohttp.ClientSession(timeout=timeout) as session:
+            async with session.get(url, headers=headers) as resp:
+                if resp.status != 200:
+                    return None
+                data = await resp.json()
+                load_type = data.get("loadType")
+                if load_type == "search":
+                    items = data.get("data", [])
+                    tracks = [t for t in (_track_from_lavalink_info(it.get("info", {})) for it in items) if t]
+                    return (None, tracks[:count]) if tracks else None
+                elif load_type == "track":
+                    item = data.get("data", {})
+                    track = _track_from_lavalink_info(item.get("info", {}))
+                    return (None, [track]) if track else None
+                elif load_type == "playlist":
+                    pdata = data.get("data", {})
+                    pinfo = pdata.get("info", {})
+                    name = pinfo.get("name") or "Playlist"
+                    tracks = [t for t in (_track_from_lavalink_info(it.get("info", {})) for it in pdata.get("tracks", [])) if t]
+                    return (name, tracks[:count]) if tracks else None
+    except Exception as exc:
+        log.debug("Lavalink resolution skipped (%s): %s", query, exc)
+    return None
+
+
 async def search_tracks(query: str, prefix: str = "ytsearch", count: int = 5) -> list[Track]:
+    if prefix == "ytsearch" and config.LAVALINK_HOST:
+        lava_res = await lavalink_load_tracks(query, count=count)
+        if lava_res and lava_res[1]:
+            return lava_res[1][:count]
     try:
         data = await ytdl_extract(f"{prefix}{count}:{query}", FLAT_OPTS)
     except MusicError:
@@ -435,6 +490,10 @@ async def load_tracks(query: str) -> tuple[Optional[str], list[Track]]:
     query = query.strip().strip("<>")
     if not query:
         raise MusicError("Give me a song name or a URL.")
+    if config.LAVALINK_HOST:
+        lava_res = await lavalink_load_tracks(query)
+        if lava_res and lava_res[1]:
+            return lava_res[0], lava_res[1]
     if _is_url(query):
         if _looks_like_playlist(query):
             data = await ytdl_extract(query, FLAT_OPTS)
