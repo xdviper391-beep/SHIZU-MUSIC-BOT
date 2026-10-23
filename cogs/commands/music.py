@@ -449,8 +449,11 @@ async def lavalink_load_tracks(query: str, count: int = 10) -> Optional[tuple[Op
     port = f":{config.LAVALINK_PORT}" if config.LAVALINK_PORT not in (80, 443) else ""
     ident = query if _is_url(query) else f"ytsearch:{query}"
     url = f"{scheme}://{config.LAVALINK_HOST}{port}/v4/loadtracks?identifier=" + urllib.parse.quote(ident)
-    headers = {"Authorization": config.LAVALINK_PASSWORD}
-    timeout = aiohttp.ClientTimeout(total=8)
+    headers = {
+        "Authorization": config.LAVALINK_PASSWORD,
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+    }
+    timeout = aiohttp.ClientTimeout(total=12)
     try:
         async with aiohttp.ClientSession(timeout=timeout) as session:
             async with session.get(url, headers=headers) as resp:
@@ -946,43 +949,58 @@ class LavalinkManager:
         port = f":{config.LAVALINK_PORT}" if config.LAVALINK_PORT not in (80, 443) else ""
         uri = f"{scheme}://{config.LAVALINK_HOST}{port}/v4/websocket"
         user_id = str(self.bot.user.id if self.bot.user else (getattr(self.bot, "application_id", None) or 1563258310071812206))
+        ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
         headers = {
             "Authorization": config.LAVALINK_PASSWORD,
             "User-Id": user_id,
             "Client-Name": f"{config.NAME}/1.0",
+            "User-Agent": ua,
         }
+        # Wake up Render in case instance is cold sleeping
+        try:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as ping_session:
+                async with ping_session.get(f"{self.rest_url}/version", headers={"Authorization": config.LAVALINK_PASSWORD, "User-Agent": ua}):
+                    pass
+        except Exception:
+            pass
+
         while True:
             try:
-                async with websockets.connect(uri, additional_headers=headers) as ws:
-                    self._ws = ws
-                    log.info("Connected to Lavalink WebSocket (%s)", config.LAVALINK_HOST)
-                    async for raw_msg in ws:
-                        try:
-                            data = json.loads(raw_msg)
-                            op = data.get("op")
-                            if op == "ready":
-                                self.session_id = data.get("sessionId")
-                                self.is_ready = True
-                                log.info("Lavalink node ready (Session ID: %s)", self.session_id)
-                            elif op == "playerUpdate":
-                                gid = int(data.get("guildId", 0))
-                                player = self.players.get(gid)
-                                if player:
-                                    state = data.get("state", {})
-                                    player._position = state.get("position", player._position)
-                            elif op == "event":
-                                gid = int(data.get("guildId", 0))
-                                player = self.players.get(gid)
-                                if player:
-                                    ev_type = data.get("type")
-                                    if ev_type == "TrackEndEvent":
-                                        reason = data.get("reason")
-                                        if reason in ("finished", "loadFailed"):
-                                            asyncio.create_task(player._on_track_end(reason))
-                                    elif ev_type == "TrackExceptionEvent":
-                                        asyncio.create_task(player._on_track_end("loadFailed"))
-                        except Exception as e:
-                            log.debug("Lavalink WS dispatch error: %s", e)
+                timeout = aiohttp.ClientTimeout(total=25, sock_connect=20)
+                async with aiohttp.ClientSession(timeout=timeout) as session:
+                    async with session.ws_connect(uri, headers=headers, heartbeat=20) as ws:
+                        self._ws = ws
+                        log.info("Connected to Lavalink WebSocket (%s)", config.LAVALINK_HOST)
+                        async for msg in ws:
+                            if msg.type == aiohttp.WSMsgType.TEXT:
+                                try:
+                                    data = json.loads(msg.data)
+                                    op = data.get("op")
+                                    if op == "ready":
+                                        self.session_id = data.get("sessionId")
+                                        self.is_ready = True
+                                        log.info("Lavalink node ready (Session ID: %s)", self.session_id)
+                                    elif op == "playerUpdate":
+                                        gid = int(data.get("guildId", 0))
+                                        player = self.players.get(gid)
+                                        if player:
+                                            state = data.get("state", {})
+                                            player._position = state.get("position", player._position)
+                                    elif op == "event":
+                                        gid = int(data.get("guildId", 0))
+                                        player = self.players.get(gid)
+                                        if player:
+                                            ev_type = data.get("type")
+                                            if ev_type == "TrackEndEvent":
+                                                reason = data.get("reason")
+                                                if reason in ("finished", "loadFailed"):
+                                                    asyncio.create_task(player._on_track_end(reason))
+                                            elif ev_type == "TrackExceptionEvent":
+                                                asyncio.create_task(player._on_track_end("loadFailed"))
+                                except Exception as e:
+                                    log.debug("Lavalink WS dispatch error: %s", e)
+                            elif msg.type in (aiohttp.WSMsgType.CLOSED, aiohttp.WSMsgType.ERROR):
+                                break
             except asyncio.CancelledError:
                 break
             except Exception as exc:
@@ -994,7 +1012,11 @@ class LavalinkManager:
         if not self.is_ready or not self.session_id:
             return False
         url = f"{self.rest_url}/v4/sessions/{self.session_id}/players/{guild_id}"
-        headers = {"Authorization": config.LAVALINK_PASSWORD, "Content-Type": "application/json"}
+        headers = {
+            "Authorization": config.LAVALINK_PASSWORD,
+            "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        }
         try:
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=8)) as session:
                 async with session.patch(url, headers=headers, json=payload) as resp:
@@ -1028,7 +1050,10 @@ class LavalinkManager:
         if not self.is_ready or not self.session_id:
             return
         url = f"{self.rest_url}/v4/sessions/{self.session_id}/players/{guild_id}"
-        headers = {"Authorization": config.LAVALINK_PASSWORD}
+        headers = {
+            "Authorization": config.LAVALINK_PASSWORD,
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+        }
         try:
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
                 async with session.delete(url, headers=headers):
@@ -2274,6 +2299,11 @@ class Music(commands.Cog):
                 )
                 return None
             try:
+                if lavalink_mgr and not lavalink_mgr.is_ready and config.LAVALINK_HOST:
+                    for _ in range(40):
+                        if lavalink_mgr.is_ready:
+                            break
+                        await asyncio.sleep(0.1)
                 player_cls = LavalinkPlayer if (lavalink_mgr and lavalink_mgr.is_ready) else MusicPlayer
                 vc = await voice.channel.connect(cls=player_cls, timeout=20, self_deaf=True)
             except Exception:
