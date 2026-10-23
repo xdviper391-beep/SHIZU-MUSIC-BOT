@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import asyncio
 import io
+import json
 import logging
 import os
 import random
@@ -36,6 +37,7 @@ from typing import Any, Optional
 
 import aiohttp
 import discord
+import websockets
 import yt_dlp
 from discord.ext import commands, tasks
 from discord.ui import Button, View
@@ -265,6 +267,7 @@ class Track:
     recommended: bool = False          # picked by autoplay
     retries: int = 0
     http_headers: dict[str, str] = field(default_factory=dict)
+    encoded: Optional[str] = None
 
     @property
     def is_seekable(self) -> bool:
@@ -420,7 +423,10 @@ async def resolve_track(track: Track) -> None:
         track.apply_info(_first_entry(await ytdl_extract(f"scsearch1:{phrase}", SINGLE_OPTS)))
 
 
-def _track_from_lavalink_info(info: dict) -> Optional[Track]:
+def _track_from_lavalink(entry: dict) -> Optional[Track]:
+    if not entry:
+        return None
+    info = entry.get("info") or entry
     if not info or not info.get("uri"):
         return None
     return Track(
@@ -431,6 +437,7 @@ def _track_from_lavalink_info(info: dict) -> Optional[Track]:
         artwork=info.get("artworkUrl"),
         is_stream=bool(info.get("isStream")),
         source=str(info.get("sourceName") or "youtube").lower(),
+        encoded=entry.get("encoded"),
     )
 
 
@@ -453,17 +460,17 @@ async def lavalink_load_tracks(query: str, count: int = 10) -> Optional[tuple[Op
                 load_type = data.get("loadType")
                 if load_type == "search":
                     items = data.get("data", [])
-                    tracks = [t for t in (_track_from_lavalink_info(it.get("info", {})) for it in items) if t]
+                    tracks = [t for t in (_track_from_lavalink(it) for it in items) if t]
                     return (None, tracks[:count]) if tracks else None
                 elif load_type == "track":
                     item = data.get("data", {})
-                    track = _track_from_lavalink_info(item.get("info", {}))
+                    track = _track_from_lavalink(item)
                     return (None, [track]) if track else None
                 elif load_type == "playlist":
                     pdata = data.get("data", {})
                     pinfo = pdata.get("info", {})
                     name = pinfo.get("name") or "Playlist"
-                    tracks = [t for t in (_track_from_lavalink_info(it.get("info", {})) for it in pdata.get("tracks", [])) if t]
+                    tracks = [t for t in (_track_from_lavalink(it) for it in pdata.get("tracks", [])) if t]
                     return (name, tracks[:count]) if tracks else None
     except Exception as exc:
         log.debug("Lavalink resolution skipped (%s): %s", query, exc)
@@ -909,6 +916,335 @@ class MusicPlayer(discord.VoiceClient):
             await self.disconnect(force=True)
         except Exception:
             log.warning("Failed to disconnect cleanly", exc_info=True)
+
+
+# ───────────────────────────── Lavalink integration ─────────────────────────────
+lavalink_mgr: Optional["LavalinkManager"] = None
+
+
+class LavalinkManager:
+    def __init__(self, bot: discord.Client):
+        self.bot = bot
+        self.session_id: Optional[str] = None
+        self.is_ready: bool = False
+        self._task: Optional[asyncio.Task] = None
+        self.players: dict[int, Any] = {}
+        self._ws = None
+
+    @property
+    def rest_url(self) -> str:
+        scheme = "https" if config.LAVALINK_SECURE else "http"
+        port = f":{config.LAVALINK_PORT}" if config.LAVALINK_PORT not in (80, 443) else ""
+        return f"{scheme}://{config.LAVALINK_HOST}{port}"
+
+    def start(self) -> None:
+        if config.LAVALINK_HOST and not self._task:
+            self._task = asyncio.create_task(self._ws_loop())
+
+    async def _ws_loop(self) -> None:
+        scheme = "wss" if config.LAVALINK_SECURE else "ws"
+        port = f":{config.LAVALINK_PORT}" if config.LAVALINK_PORT not in (80, 443) else ""
+        uri = f"{scheme}://{config.LAVALINK_HOST}{port}/v4/websocket"
+        user_id = str(self.bot.user.id if self.bot.user else (getattr(self.bot, "application_id", None) or 1563258310071812206))
+        headers = {
+            "Authorization": config.LAVALINK_PASSWORD,
+            "User-Id": user_id,
+            "Client-Name": f"{config.NAME}/1.0",
+        }
+        while True:
+            try:
+                async with websockets.connect(uri, additional_headers=headers) as ws:
+                    self._ws = ws
+                    log.info("Connected to Lavalink WebSocket (%s)", config.LAVALINK_HOST)
+                    async for raw_msg in ws:
+                        try:
+                            data = json.loads(raw_msg)
+                            op = data.get("op")
+                            if op == "ready":
+                                self.session_id = data.get("sessionId")
+                                self.is_ready = True
+                                log.info("Lavalink node ready (Session ID: %s)", self.session_id)
+                            elif op == "playerUpdate":
+                                gid = int(data.get("guildId", 0))
+                                player = self.players.get(gid)
+                                if player:
+                                    state = data.get("state", {})
+                                    player._position = state.get("position", player._position)
+                            elif op == "event":
+                                gid = int(data.get("guildId", 0))
+                                player = self.players.get(gid)
+                                if player:
+                                    ev_type = data.get("type")
+                                    if ev_type == "TrackEndEvent":
+                                        reason = data.get("reason")
+                                        if reason in ("finished", "loadFailed"):
+                                            asyncio.create_task(player._on_track_end(reason))
+                                    elif ev_type == "TrackExceptionEvent":
+                                        asyncio.create_task(player._on_track_end("loadFailed"))
+                        except Exception as e:
+                            log.debug("Lavalink WS dispatch error: %s", e)
+            except asyncio.CancelledError:
+                break
+            except Exception as exc:
+                self.is_ready = False
+                log.warning("Lavalink connection error: %s. Retrying in 5 seconds...", exc)
+                await asyncio.sleep(5)
+
+    async def _patch_player(self, guild_id: int, payload: dict) -> bool:
+        if not self.is_ready or not self.session_id:
+            return False
+        url = f"{self.rest_url}/v4/sessions/{self.session_id}/players/{guild_id}"
+        headers = {"Authorization": config.LAVALINK_PASSWORD, "Content-Type": "application/json"}
+        try:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=8)) as session:
+                async with session.patch(url, headers=headers, json=payload) as resp:
+                    return resp.status in (200, 204)
+        except Exception as e:
+            log.warning("Lavalink PATCH player error: %s", e)
+            return False
+
+    async def update_voice(self, guild_id: int, voice_data: dict) -> bool:
+        return await self._patch_player(guild_id, {"voice": voice_data})
+
+    async def play(self, guild_id: int, encoded_track: str, volume: int = 100, position: int = 0) -> bool:
+        payload = {"encodedTrack": encoded_track, "volume": volume, "paused": False}
+        if position > 0:
+            payload["position"] = position
+        return await self._patch_player(guild_id, payload)
+
+    async def pause(self, guild_id: int, paused: bool) -> bool:
+        return await self._patch_player(guild_id, {"paused": paused})
+
+    async def seek(self, guild_id: int, position: int) -> bool:
+        return await self._patch_player(guild_id, {"position": max(0, int(position))})
+
+    async def set_volume(self, guild_id: int, volume: int) -> bool:
+        return await self._patch_player(guild_id, {"volume": volume})
+
+    async def stop(self, guild_id: int) -> bool:
+        return await self._patch_player(guild_id, {"encodedTrack": None})
+
+    async def destroy(self, guild_id: int) -> None:
+        if not self.is_ready or not self.session_id:
+            return
+        url = f"{self.rest_url}/v4/sessions/{self.session_id}/players/{guild_id}"
+        headers = {"Authorization": config.LAVALINK_PASSWORD}
+        try:
+            async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=5)) as session:
+                async with session.delete(url, headers=headers):
+                    pass
+        except Exception:
+            pass
+
+
+class LavalinkPlayer(MusicPlayer):
+    """Voice client delegating playback to Lavalink node (utilizing YouTube OAuth refresh token)."""
+
+    def __init__(self, client: discord.Client, channel: discord.abc.Connectable):
+        discord.VoiceProtocol.__init__(self, client, channel)
+        self.cog: Optional[Any] = None
+        self.ctx: Optional[commands.Context] = None
+        self.queue: TrackQueue = TrackQueue()
+        self.history: list[Track] = []
+        self.current: Optional[Track] = None
+        self.loop_mode: bool = False
+        self.autoplay: bool = False
+        self.volume: int = DEFAULT_VOLUME
+        self.audio_filters: str = ""
+        self.speed: float = 1.0
+        self.remix_state = None
+        self.session_owner_id: Optional[int] = None
+        self.transferred: bool = False
+        self._handled_disconnect: bool = False
+        self.owner_absent_since: Optional[float] = None
+        self.stay: bool = False
+        self.awaiting_owner: bool = False
+        self.card: Optional[Any] = None
+        self.pending_note: Optional[str] = None
+        self.play_lock = asyncio.Lock()
+        self._gen: int = 0
+        self._connected: bool = False
+        self._playing: bool = False
+        self._paused: bool = False
+        self._position: int = 0
+        self._last_pos_update: float = 0.0
+        self._voice_ready: bool = False
+        self._server_data: Optional[dict] = None
+        self._state_data: Optional[dict] = None
+
+    @property
+    def playing(self) -> bool:
+        return self.current is not None and self.is_connected()
+
+    @property
+    def paused(self) -> bool:
+        return self.is_paused()
+
+    @property
+    def position(self) -> int:
+        if not self._playing or self.current is None:
+            return 0
+        if self._paused:
+            return self._position
+        elapsed = int((time.monotonic() - self._last_pos_update) * 1000)
+        pos = self._position + elapsed
+        if self.current.length:
+            pos = min(pos, self.current.length)
+        return max(0, pos)
+
+    def is_connected(self) -> bool:
+        return self._connected
+
+    def is_playing(self) -> bool:
+        return self._playing and not self._paused
+
+    def is_paused(self) -> bool:
+        return self._paused
+
+    def set_volume(self, level: int) -> None:
+        self.volume = max(MIN_VOLUME, min(MAX_VOLUME, int(level)))
+        if lavalink_mgr and lavalink_mgr.is_ready:
+            asyncio.create_task(lavalink_mgr.set_volume(self.guild.id, self.volume))
+
+    def pause(self) -> None:
+        self._paused = True
+        if lavalink_mgr and lavalink_mgr.is_ready:
+            asyncio.create_task(lavalink_mgr.pause(self.guild.id, True))
+
+    def resume(self) -> None:
+        self._paused = False
+        self._last_pos_update = time.monotonic()
+        if lavalink_mgr and lavalink_mgr.is_ready:
+            asyncio.create_task(lavalink_mgr.pause(self.guild.id, False))
+
+    def stop(self) -> None:
+        self._playing = False
+        self._paused = False
+        if lavalink_mgr and lavalink_mgr.is_ready:
+            asyncio.create_task(lavalink_mgr.stop(self.guild.id))
+
+    async def seek(self, milliseconds: int) -> None:
+        async with self.play_lock:
+            if not self.is_connected() or self.current is None:
+                return
+            self._position = max(0, int(milliseconds))
+            self._last_pos_update = time.monotonic()
+            if lavalink_mgr and lavalink_mgr.is_ready:
+                await lavalink_mgr.seek(self.guild.id, self._position)
+
+    async def reload_audio(self) -> None:
+        if self.current is not None:
+            await self.seek(self.position if self.current.is_seekable else 0)
+
+    # ── VoiceProtocol implementations ──
+    async def connect(self, *, timeout: float, reconnect: bool, self_deaf: bool = False, self_mute: bool = False) -> None:
+        await self.channel.guild.change_voice_state(channel=self.channel, self_deaf=True)
+        self._connected = True
+        if lavalink_mgr:
+            lavalink_mgr.players[self.guild.id] = self
+
+    async def disconnect(self, *, force: bool = False) -> None:
+        self._connected = False
+        self._playing = False
+        if lavalink_mgr:
+            lavalink_mgr.players.pop(self.guild.id, None)
+            await lavalink_mgr.destroy(self.guild.id)
+        try:
+            await self.channel.guild.change_voice_state(channel=None)
+        except Exception:
+            pass
+        self.cleanup()
+
+    async def on_voice_state_update(self, data: dict) -> None:
+        self._state_data = data
+        await self._check_voice_data()
+
+    async def on_voice_server_update(self, data: dict) -> None:
+        self._server_data = data
+        await self._check_voice_data()
+
+    async def _check_voice_data(self) -> None:
+        if self._state_data and self._server_data and lavalink_mgr and lavalink_mgr.is_ready:
+            voice_payload = {
+                "token": self._server_data["token"],
+                "endpoint": self._server_data["endpoint"],
+                "sessionId": self._state_data["session_id"],
+            }
+            if await lavalink_mgr.update_voice(self.guild.id, voice_payload):
+                self._voice_ready = True
+
+    async def _wait_voice_ready(self, timeout: float = 8.0) -> bool:
+        start_t = time.monotonic()
+        while time.monotonic() - start_t < timeout:
+            if self._voice_ready:
+                return True
+            await asyncio.sleep(0.05)
+        return False
+
+    async def _start(self, track: Track, *, start: float = 0.0, announce: bool = True) -> bool:
+        if not self.is_connected():
+            self.current = None
+            return True
+        self._gen += 1
+        gen = self._gen
+        self.current = track
+
+        # If track has no encoded string yet, fetch it via Lavalink
+        if not track.encoded:
+            lava_res = await lavalink_load_tracks(track.uri or track.query or track.title)
+            if lava_res and lava_res[1] and lava_res[1][0].encoded:
+                track.encoded = lava_res[1][0].encoded
+                if not track.artwork:
+                    track.artwork = lava_res[1][0].artwork
+                if not track.length:
+                    track.length = lava_res[1][0].length
+
+        if not track.encoded:
+            self._track_failed(track, "Lavalink could not load that track.")
+            return False
+
+        # Wait for Discord voice gateway handshake to be sent to Lavalink
+        await self._wait_voice_ready()
+
+        start_ms = max(0, int(start * 1000))
+        ok = await lavalink_mgr.play(self.guild.id, track.encoded, volume=self.volume, position=start_ms)
+        if not ok:
+            self._track_failed(track, "Lavalink could not start playback.")
+            return False
+
+        self._playing = True
+        self._paused = False
+        self._position = start_ms
+        self._last_pos_update = time.monotonic()
+
+        if not self.history or self.history[-1] is not track:
+            self.history.append(track)
+            if len(self.history) > HISTORY_SIZE:
+                self.history.pop(0)
+
+        if announce and self.cog is not None:
+            self.cog.spawn(self.cog.on_track_start(self, track))
+        return True
+
+    async def _advance(self, *, skipped: bool = False, failed: bool = False) -> None:
+        while True:
+            track, repeat = await self._pick_next(skipped, failed)
+            if track is None:
+                self._gen += 1
+                self.stop()
+                self.current = None
+                if self.cog is not None:
+                    await self.cog.finish_playback(self)
+                return
+            if repeat:
+                track.retries = 0
+            if await self._start(track, announce=not repeat):
+                return
+            skipped = failed = True
+
+    async def _on_track_end(self, reason: str) -> None:
+        async with self.play_lock:
+            await self._advance()
 
 
 # ───────────────────────── optional Spotify fallback ─────────────────────────
@@ -1507,11 +1843,18 @@ class Music(commands.Cog):
             config.SPOTIFY_CLIENT_SECRET,
             lambda: self.client.session,
         )
+        global lavalink_mgr
+        if config.LAVALINK_HOST and lavalink_mgr is None:
+            lavalink_mgr = LavalinkManager(self.client)
+            lavalink_mgr.start()
 
     async def cog_load(self) -> None:
         if not shutil.which(FFMPEG_EXECUTABLE):
             log.warning("FFmpeg was not found (%s). Playback will fail until it is installed.", FFMPEG_EXECUTABLE)
         self.idle_monitor.start()
+        global lavalink_mgr
+        if lavalink_mgr:
+            lavalink_mgr.start()
 
     async def cog_unload(self) -> None:
         self.idle_monitor.cancel()
@@ -1931,7 +2274,8 @@ class Music(commands.Cog):
                 )
                 return None
             try:
-                vc = await voice.channel.connect(cls=MusicPlayer, timeout=20, self_deaf=True)
+                player_cls = LavalinkPlayer if (lavalink_mgr and lavalink_mgr.is_ready) else MusicPlayer
+                vc = await voice.channel.connect(cls=player_cls, timeout=20, self_deaf=True)
             except Exception:
                 log.warning("Could not join voice channel %s", voice.channel.id, exc_info=True)
                 await ctx.send(
