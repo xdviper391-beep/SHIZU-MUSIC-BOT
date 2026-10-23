@@ -85,6 +85,11 @@ if not FFMPEG_PATH and not shutil.which("ffmpeg"):
     except Exception:
         pass
 YTDL_COOKIEFILE = _env("YTDL_COOKIEFILE")    # optional cookies.txt (YouTube bot checks / age-restricted)
+if not YTDL_COOKIEFILE:
+    for _candidate in (BASE_DIR / "cookies.txt", Path("cookies.txt"), Path("/home/container/cookies.txt")):
+        if _candidate.is_file() and _candidate.stat().st_size > 0:
+            YTDL_COOKIEFILE = str(_candidate.resolve())
+            break
 
 # ── Public Lavalink Node ─────────────────────────────────
 LAVALINK_HOST = _env("LAVALINK_HOST")

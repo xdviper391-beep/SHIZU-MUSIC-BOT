@@ -20,14 +20,17 @@ from __future__ import annotations
 import asyncio
 import io
 import logging
+import os
 import random
 import re
+import shlex
 import shutil
 import sys
 import time
 from collections import deque
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import partial
+from pathlib import Path
 from typing import Any, Optional
 
 import aiohttp
@@ -69,8 +72,13 @@ _BASE_OPTS: dict[str, Any] = {
     "retries": 3,
     "geo_bypass": True,
     "source_address": "0.0.0.0",   # IPv4 only: YouTube often blocks IPv6 ranges
+    "http_headers": {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
+        "Accept": "*/*",
+        "Accept-Language": "en-US,en;q=0.9",
+    },
 }
-if config.YTDL_COOKIEFILE:  # optional: cookies are NOT needed, the client ladder below works without them
+if config.YTDL_COOKIEFILE:
     _BASE_OPTS["cookiefile"] = config.YTDL_COOKIEFILE
 # YouTube's player needs a JavaScript runtime (Node / Deno) for yt-dlp to solve its challenges.
 _JS_RUNTIMES = {name: {} for name in ("deno", "node", "bun") if shutil.which(name)}
@@ -81,13 +89,14 @@ if _JS_RUNTIMES:
 # Bot-check bypass WITHOUT cookies: when YouTube refuses one "player client", try the next one.
 # The first one that works is remembered and tried first next time.
 CLIENT_LADDER: list[Optional[list[str]]] = [
-    None,                           # yt-dlp's own default clients
-    ["tv", "web_safari"],
+    None,                           # yt-dlp's own default clients (uses cookies if available)
+    ["android"],                    # Android client: highest success rate on datacenter IPs without cookies
     ["android_vr"],
-    ["mweb"],
-    ["web_embedded", "tv_embedded"],
+    ["tv_embedded"],
+    ["web_embedded"],
+    ["tv", "web_safari"],
     ["ios"],
-    ["android"],
+    ["mweb"],
 ]
 _client_start = 0
 
@@ -254,6 +263,7 @@ class Track:
     resolved_at: float = 0.0
     recommended: bool = False          # picked by autoplay
     retries: int = 0
+    http_headers: dict[str, str] = field(default_factory=dict)
 
     @property
     def is_seekable(self) -> bool:
@@ -278,6 +288,16 @@ class Track:
         self.uri = data.get("webpage_url") or data.get("original_url") or self.uri
         self.source = (data.get("extractor_key") or data.get("extractor") or self.source or "").lower()
         self.resolved_at = time.monotonic()
+        headers = data.get("http_headers")
+        if not headers:
+            for f in (data.get("requested_formats") or []) + (data.get("formats") or []):
+                if isinstance(f, dict) and f.get("http_headers"):
+                    if f.get("url") == url:
+                        headers = f.get("http_headers")
+                        break
+                    if not headers:
+                        headers = f.get("http_headers")
+        self.http_headers = dict(headers) if headers else {}
 
 
 def _first_entry(data: Any) -> dict:
@@ -337,6 +357,18 @@ async def ytdl_extract(query: str, opts: dict[str, Any]) -> Any:
     """yt-dlp extraction with automatic YouTube client fallback (no cookies required)."""
     global _client_start
 
+    cookie_path = config.YTDL_COOKIEFILE
+    if not cookie_path or not os.path.isfile(cookie_path):
+        for cand in (config.BASE_DIR / "cookies.txt", Path("cookies.txt"), Path("/home/container/cookies.txt")):
+            if cand.is_file() and cand.stat().st_size > 0:
+                cookie_path = str(cand.resolve())
+                config.YTDL_COOKIEFILE = cookie_path
+                _BASE_OPTS["cookiefile"] = cookie_path
+                SINGLE_OPTS["cookiefile"] = cookie_path
+                FLAT_OPTS["cookiefile"] = cookie_path
+                log.info("Detected and loaded cookies from %s", cookie_path)
+                break
+
     def run(options: dict[str, Any]) -> Any:
         with yt_dlp.YoutubeDL(options) as ydl:
             return ydl.extract_info(query, download=False)
@@ -348,6 +380,8 @@ async def ytdl_extract(query: str, opts: dict[str, Any]) -> Any:
         for idx in order:
             clients = CLIENT_LADDER[idx]
             options = dict(opts)
+            if config.YTDL_COOKIEFILE and os.path.isfile(config.YTDL_COOKIEFILE):
+                options["cookiefile"] = config.YTDL_COOKIEFILE
             if clients:
                 options["extractor_args"] = {"youtube": {"player_client": clients}}
             try:
@@ -603,7 +637,14 @@ class MusicPlayer(discord.VoiceClient):
         before = "-nostdin -reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5 -probesize 1M -analyzeduration 1M"
         if start > 0 and track.is_seekable:
             before += f" -ss {start:.2f}"
-        options = "-vn -ar 48000 -ac 2 -bufsize 512k"   # Discord's native 48 kHz stereo: no extra resampling
+        if track.http_headers:
+            header_lines = "".join(f"{k}: {v}\r\n" for k, v in track.http_headers.items() if k and v)
+            if header_lines:
+                before += f" -headers {shlex.quote(header_lines)}"
+        else:
+            default_ua = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36"
+            before += f" -user_agent {shlex.quote(default_ua)}"
+        options = "-vn -bufsize 512k"   # discord.py automatically passes -f s16le -ar 48000 -ac 2
         if self.audio_filters:
             options += f' -af "{self.audio_filters}"'
         inner = discord.FFmpegPCMAudio(
