@@ -1020,6 +1020,9 @@ class LavalinkManager:
         try:
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=8)) as session:
                 async with session.patch(url, headers=headers, json=payload) as resp:
+                    if resp.status not in (200, 204):
+                        txt = await resp.text()
+                        log.warning("Lavalink PATCH player returned %s: %s", resp.status, txt)
                     return resp.status in (200, 204)
         except Exception as e:
             log.warning("Lavalink PATCH player error: %s", e)
@@ -1028,10 +1031,12 @@ class LavalinkManager:
     async def update_voice(self, guild_id: int, voice_data: dict) -> bool:
         return await self._patch_player(guild_id, {"voice": voice_data})
 
-    async def play(self, guild_id: int, encoded_track: str, volume: int = 100, position: int = 0) -> bool:
-        payload = {"encodedTrack": encoded_track, "volume": volume, "paused": False}
+    async def play(self, guild_id: int, encoded_track: str, volume: int = 100, position: int = 0, voice_data: Optional[dict] = None) -> bool:
+        payload: dict[str, Any] = {"encodedTrack": encoded_track, "volume": volume, "paused": False}
         if position > 0:
             payload["position"] = position
+        if voice_data:
+            payload["voice"] = voice_data
         return await self._patch_player(guild_id, payload)
 
     async def pause(self, guild_id: int, paused: bool) -> bool:
@@ -1171,6 +1176,9 @@ class LavalinkPlayer(MusicPlayer):
     async def disconnect(self, *, force: bool = False) -> None:
         self._connected = False
         self._playing = False
+        self._voice_ready = False
+        self._state_data = None
+        self._server_data = None
         if lavalink_mgr:
             lavalink_mgr.players.pop(self.guild.id, None)
             await lavalink_mgr.destroy(self.guild.id)
@@ -1180,21 +1188,54 @@ class LavalinkPlayer(MusicPlayer):
             pass
         self.cleanup()
 
+    async def move_to(self, channel: discord.abc.Connectable) -> None:
+        self.channel = channel
+        self._voice_ready = False
+        await self.channel.guild.change_voice_state(channel=self.channel, self_deaf=True)
+
+    def cleanup(self) -> None:
+        self._playing = False
+        self._paused = False
+        self.current = None
+        self.queue.clear()
+        try:
+            super().cleanup()
+        except Exception:
+            pass
+
     async def on_voice_state_update(self, data: dict) -> None:
         self._state_data = data
+        cid = data.get("channel_id")
+        if not cid:
+            self._connected = False
+            self._voice_ready = False
+            return
         await self._check_voice_data()
 
     async def on_voice_server_update(self, data: dict) -> None:
         self._server_data = data
         await self._check_voice_data()
 
-    async def _check_voice_data(self) -> None:
-        if self._state_data and self._server_data and lavalink_mgr and lavalink_mgr.is_ready:
-            voice_payload = {
-                "token": self._server_data["token"],
-                "endpoint": self._server_data["endpoint"],
-                "sessionId": self._state_data["session_id"],
+    def _build_voice_payload(self) -> Optional[dict]:
+        if not (self._state_data and self._server_data):
+            return None
+        token = self._server_data.get("token")
+        endpoint = self._server_data.get("endpoint")
+        session_id = self._state_data.get("session_id")
+        raw_cid = self._state_data.get("channel_id") or (self.channel.id if self.channel else None)
+        if token and endpoint and session_id and raw_cid:
+            return {
+                "token": str(token),
+                "endpoint": str(endpoint),
+                "sessionId": str(session_id),
+                "channelId": str(raw_cid),
             }
+        return None
+
+    async def _check_voice_data(self) -> None:
+        voice_payload = self._build_voice_payload()
+        if voice_payload and lavalink_mgr and lavalink_mgr.is_ready:
+            log.info("Sending voice credentials to Lavalink for guild %s (channel %s)", self.guild.id, voice_payload.get("channelId"))
             if await lavalink_mgr.update_voice(self.guild.id, voice_payload):
                 self._voice_ready = True
 
@@ -1203,6 +1244,10 @@ class LavalinkPlayer(MusicPlayer):
         while time.monotonic() - start_t < timeout:
             if self._voice_ready:
                 return True
+            if self._state_data and self._server_data and not self._voice_ready:
+                await self._check_voice_data()
+                if self._voice_ready:
+                    return True
             await asyncio.sleep(0.05)
         return False
 
@@ -1232,7 +1277,8 @@ class LavalinkPlayer(MusicPlayer):
         await self._wait_voice_ready()
 
         start_ms = max(0, int(start * 1000))
-        ok = await lavalink_mgr.play(self.guild.id, track.encoded, volume=self.volume, position=start_ms)
+        voice_payload = self._build_voice_payload()
+        ok = await lavalink_mgr.play(self.guild.id, track.encoded, volume=self.volume, position=start_ms, voice_data=voice_payload)
         if not ok:
             self._track_failed(track, "Lavalink could not start playback.")
             return False
@@ -1269,7 +1315,7 @@ class LavalinkPlayer(MusicPlayer):
 
     async def _on_track_end(self, reason: str) -> None:
         async with self.play_lock:
-            await self._advance()
+            await self._advance(failed=(reason == "loadFailed"))
 
 
 # ───────────────────────── optional Spotify fallback ─────────────────────────
