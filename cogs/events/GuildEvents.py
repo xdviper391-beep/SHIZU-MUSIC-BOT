@@ -28,25 +28,14 @@ FEEDBACK_FILE = config.DB_DIR / "feedback.json"
 
 
 def _invite_url(bot: commands.Bot) -> str:
-    """Generate dynamic bot invite URL with recommended music permissions."""
+    """Generate dynamic bot invite URL requesting Administrator permission directly."""
     if config.INVITE_URL:
         return config.INVITE_URL
     if not bot.user:
         return "https://discord.com"
     return discord.utils.oauth_url(
         bot.user.id,
-        permissions=discord.Permissions(
-            view_channel=True,
-            send_messages=True,
-            embed_links=True,
-            attach_files=True,
-            read_message_history=True,
-            add_reactions=True,
-            use_external_emojis=True,
-            connect=True,
-            speak=True,
-            set_voice_channel_status=True,
-        ),
+        permissions=discord.Permissions(administrator=True),
         scopes=("bot", "applications.commands"),
     )
 

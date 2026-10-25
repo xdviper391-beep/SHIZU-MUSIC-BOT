@@ -304,14 +304,10 @@ class ShizuMusic(commands.AutoShardedBot):
     # ── helpers ─────────────────────────────────────────
     @property
     def invite_url(self) -> str:
-        """OAuth2 invite link (bot + slash commands) with the permissions a music bot needs."""
+        """OAuth2 invite link (bot + slash commands) requesting Administrator permission directly."""
         return discord.utils.oauth_url(
             self.application_id or self.user.id,
-            permissions=discord.Permissions(
-                view_channel=True, send_messages=True, embed_links=True, attach_files=True,
-                read_message_history=True, add_reactions=True, use_external_emojis=True,
-                connect=True, speak=True, set_voice_channel_status=True, view_audit_log=True,
-            ),
+            permissions=discord.Permissions(administrator=True),
             scopes=("bot", "applications.commands"),
         )
 
