@@ -336,34 +336,42 @@ class GuildEvents(commands.Cog, name="GuildEvents"):
     @commands.Cog.listener()
     async def on_audit_log_entry_create(self, entry: discord.AuditLogEntry):
         """Gateway audit log listener to capture kick / ban actors before guild drops."""
-        if not self.bot.user or not entry.target or entry.target.id != self.bot.user.id:
-            return
+        try:
+            if entry.action not in (discord.AuditLogAction.kick, discord.AuditLogAction.ban):
+                return
 
-        now = time.time()
-        guild = getattr(entry, "guild", None)
-        guild_id = guild.id if guild else int(getattr(entry, "guild_id", 0) or 0)
-        guild_name = guild.name if guild else "Unknown Guild"
+            target = getattr(entry, "target", None)
+            target_id = getattr(target, "id", None) or getattr(entry, "_target_id", None)
+            if not self.bot.user or target_id != self.bot.user.id:
+                return
 
-        if entry.action == discord.AuditLogAction.kick:
-            self._recent_removals[guild_id] = {
-                "action": "kick",
-                "actor": entry.user,
-                "reason": getattr(entry, "reason", None),
-                "time": now,
-                "guild_name": guild_name,
-                "guild_id": guild_id,
-            }
-            log.info("Recorded kick audit log entry for bot in guild %s by %s", guild_id, entry.user)
-        elif entry.action == discord.AuditLogAction.ban:
-            self._recent_removals[guild_id] = {
-                "action": "ban",
-                "actor": entry.user,
-                "reason": getattr(entry, "reason", None),
-                "time": now,
-                "guild_name": guild_name,
-                "guild_id": guild_id,
-            }
-            log.info("Recorded ban audit log entry for bot in guild %s by %s", guild_id, entry.user)
+            now = time.time()
+            guild = getattr(entry, "guild", None)
+            guild_id = guild.id if guild else int(getattr(entry, "guild_id", 0) or 0)
+            guild_name = guild.name if guild else "Unknown Guild"
+
+            if entry.action == discord.AuditLogAction.kick:
+                self._recent_removals[guild_id] = {
+                    "action": "kick",
+                    "actor": entry.user,
+                    "reason": getattr(entry, "reason", None),
+                    "time": now,
+                    "guild_name": guild_name,
+                    "guild_id": guild_id,
+                }
+                log.info("Recorded kick audit log entry for bot in guild %s by %s", guild_id, entry.user)
+            elif entry.action == discord.AuditLogAction.ban:
+                self._recent_removals[guild_id] = {
+                    "action": "ban",
+                    "actor": entry.user,
+                    "reason": getattr(entry, "reason", None),
+                    "time": now,
+                    "guild_name": guild_name,
+                    "guild_id": guild_id,
+                }
+                log.info("Recorded ban audit log entry for bot in guild %s by %s", guild_id, entry.user)
+        except Exception:
+            pass
 
     @commands.Cog.listener()
     async def on_member_ban(self, guild: discord.Guild, user: discord.abc.User):
