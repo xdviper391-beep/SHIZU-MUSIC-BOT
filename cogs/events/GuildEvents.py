@@ -27,6 +27,10 @@ feedback_log = logging.getLogger("shizumusic.feedback")
 FEEDBACK_FILE = config.DB_DIR / "feedback.json"
 
 
+from services.style import NO_MENTIONS, fancy, get_embed_color
+from utils import emojis as E
+
+
 def _invite_url(bot: commands.Bot) -> str:
     """Generate dynamic bot invite URL requesting Administrator permission directly."""
     if config.INVITE_URL:
@@ -38,6 +42,58 @@ def _invite_url(bot: commands.Bot) -> str:
         permissions=discord.Permissions(administrator=True),
         scopes=("bot", "applications.commands"),
     )
+
+
+class GuildWelcomeView(discord.ui.LayoutView):
+    """Clean modern Components V2 container sent when the bot joins a server."""
+
+    def __init__(self, guild_name: str, prefix: str, bot: commands.Bot):
+        super().__init__(timeout=None)
+        invite_btn = discord.ui.Button(
+            label="Invite Bot",
+            emoji=E.HEART,
+            style=discord.ButtonStyle.link,
+            url=_invite_url(bot),
+        )
+        support_url = (config.SUPPORT_URL or "").strip()
+        buttons = [invite_btn]
+        if support_url.startswith("http") and support_url.rstrip("/") not in ("https://discord.gg", "http://discord.gg"):
+            buttons.append(
+                discord.ui.Button(
+                    label="Support Server",
+                    emoji=E.BELL,
+                    style=discord.ButtonStyle.link,
+                    url=support_url,
+                )
+            )
+
+        self.add_item(
+            discord.ui.Container(
+                discord.ui.TextDisplay(
+                    f"## {E.HEART} {fancy('Thanks for choosing ' + config.NAME)}\n"
+                    f"{E.ARROW} **{guild_name}** is now ready for crystal-clear 24/7 music streaming!\n"
+                    f"{E.ARROW} Enjoy high quality audio with zero lag and rich sound effects."
+                ),
+                discord.ui.Separator(),
+                discord.ui.TextDisplay(
+                    f"### {E.DJ} {fancy('Quick start guide')}\n"
+                    f"{E.ARROW} 1. Connect to any Voice Channel in your server.\n"
+                    f"{E.ARROW} 2. Type `{prefix}play <song title or link>` (e.g. `{prefix}play faded`).\n"
+                    f"{E.ARROW} 3. An interactive player card will post with real-time controls!\n"
+                    f"\n"
+                    f"### {E.CONFIG} {fancy('Helpful commands')}\n"
+                    f"{E.ARROW} `{prefix}help` — Interactive command center & button controls\n"
+                    f"{E.ARROW} `{prefix}setprefix <prefix>` — Set custom server prefix\n"
+                    f"{E.ARROW} `{prefix}247` — Keep bot in voice channel 24/7 with autoplay\n"
+                    f"{E.ARROW} `{prefix}remix` — Open audio effects console (Bassboost, Lofi, 8D)"
+                ),
+                discord.ui.Separator(),
+                discord.ui.ActionRow(*buttons),
+                discord.ui.Separator(),
+                discord.ui.TextDisplay(f"-# {E.DOT} Developers: {config.DEVELOPERS}"),
+                accent_colour=get_embed_color(),
+            )
+        )
 
 
 def save_feedback(record: dict) -> None:
@@ -455,62 +511,36 @@ class GuildEvents(commands.Cog, name="GuildEvents"):
             except discord.HTTPException:
                 pass
 
-        # ── Send Inviter Welcome DM (Only if reliably verified!) ──
-        if inviter and not inviter.bot and config.ENABLE_JOIN_DM:
+        # ── Send Inviter Welcome (DM first, fallback to guild channel) ──
+        if config.ENABLE_JOIN_DM:
             guild_data = await getConfig(guild.id)
             prefix = guild_data.get("prefix", config.DEFAULT_PREFIX)
+            welcome_view = GuildWelcomeView(guild.name, prefix, self.bot)
 
-            welcome_embed = discord.Embed(
-                title=f"🎵 Thanks for adding {config.NAME}!",
-                description=(
-                    f"Hello **{inviter.display_name}**! Thank you for inviting **{config.NAME}** to **{guild.name}**.\n\n"
-                    "Here's a quick guide to get crystal-clear 24/7 music streaming in your server:"
-                ),
-                color=config.EMBED_COLOR,
-            )
-            welcome_embed.add_field(
-                name="▶️ Quick Start",
-                value=(
-                    f"1. Connect to any voice channel in **{guild.name}**\n"
-                    f"2. Type `{prefix}play <song title or URL>` (or `/play <song>`)\n"
-                    f"3. An interactive player card will post with real-time controls"
-                ),
-                inline=False,
-            )
-            welcome_embed.add_field(
-                name="🛠️ Useful Features & Commands",
-                value=(
-                    f"• `{prefix}help` — Interactive command center\n"
-                    f"• `{prefix}setprefix <prefix>` — Set custom server prefix *(Requires Manage Server)*\n"
-                    f"• `{prefix}247` — Stay in voice channel 24/7 with autoplay\n"
-                    f"• `{prefix}remix` — Audio effects console (8D, Bassboost, Lofi, Atmos)"
-                ),
-                inline=False,
-            )
-            links: List[str] = []
-            if config.SUPPORT_URL:
-                links.append(f"[Support Server]({config.SUPPORT_URL})")
-            if config.REVIEW_URL:
-                links.append(f"[Review Bot]({config.REVIEW_URL})")
-            invite_url = _invite_url(self.bot)
-            if invite_url:
-                links.append(f"[Invite Link]({invite_url})")
+            sent_dm = False
+            if inviter and not inviter.bot:
+                try:
+                    await inviter.send(view=welcome_view)
+                    log.info("Sent welcome DM to verified inviter %s (%s)", inviter.id, inviter.name)
+                    sent_dm = True
+                except discord.Forbidden:
+                    log.info("Could not send welcome DM to inviter %s (%s): DMs closed", inviter.id, inviter.name)
+                except discord.HTTPException:
+                    pass
 
-            if links:
-                welcome_embed.add_field(name="🔗 Useful Links", value=" • ".join(links), inline=False)
-
-            welcome_embed.set_footer(
-                text=f"Server: {guild.name} • Server ID: {guild.id}",
-                icon_url=guild.icon.url if guild.icon else None,
-            )
-
-            try:
-                await inviter.send(embed=welcome_embed)
-                log.info("Sent welcome DM to verified inviter %s (%s)", inviter.id, inviter.name)
-            except discord.Forbidden:
-                log.info("Could not send welcome DM to inviter %s (%s): DMs closed", inviter.id, inviter.name)
-            except discord.HTTPException:
-                pass
+            if not sent_dm:
+                target_channel = guild.system_channel
+                if not (target_channel and target_channel.permissions_for(guild.me).send_messages):
+                    for ch in guild.text_channels:
+                        if ch.permissions_for(guild.me).send_messages:
+                            target_channel = ch
+                            break
+                if target_channel:
+                    try:
+                        await target_channel.send(view=welcome_view)
+                        log.info("Sent welcome message to server channel #%s (%s)", target_channel.name, guild.id)
+                    except discord.HTTPException:
+                        pass
 
     # ═════════════════════════════════════════════════════════════════════════
     #  3. GUILD REMOVAL NOTIFICATION & KICK FEEDBACK

@@ -68,7 +68,10 @@ _PLAYER_CONSTANTS: Dict[str, str] = {
     "autoplay": "BTN_AUTOPLAY",
     "remix": "REMIX_BTN",
 }
-_PLAYER_PLAIN: Dict[str, str] = {"remix": getattr(E, "REMIX_BTN", "\U0001f39b\ufe0f"), "others": "\u2699\ufe0f"}
+_PLAYER_PLAIN: Dict[str, str] = {
+    "remix": getattr(E, "REMIX_BTN", "<a:emoji_21:1566217201411817503>"),
+    "others": getattr(E, "CONFIG", "<a:config:1565839999063171185>"),
+}
 _CONSOLE_PLAIN: Dict[str, str] = {slot: emoji for slot, _, emoji in _CONSOLE_EXTRAS}
 
 ALL_SLOTS = {slot for slot, _ in PLAYER_SLOTS} | {slot for slot, _ in REMIX_SLOTS}

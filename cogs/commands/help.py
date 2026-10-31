@@ -11,6 +11,7 @@ from utils.Tools import getConfig
 from utils import help as vhelp
 from utils import Paginator, DescriptionEmbedPaginator, FieldPagePaginator, TextPaginator
 import asyncio
+from services.style import NO_MENTIONS, fancy, get_embed_color
 from utils import emojis as E
 from utils import config
 from utils.Tools import *
@@ -20,14 +21,12 @@ color = config.EMBED_COLOR
 class HelpCommand(commands.HelpCommand):
 
   async def send_ignore_message(self, ctx, ignore_type: str):
-
     if ignore_type == "channel":
-      await ctx.reply(f"This channel is ignored.", mention_author=False)
+      await ctx.reply(f"{E.OFFLINE} This channel is ignored.", mention_author=False)
     elif ignore_type == "command":
-      await ctx.reply(f"{ctx.author.mention} This Command, Channel, or You have been ignored here.", delete_after=6)
+      await ctx.reply(f"{E.OFFLINE} {ctx.author.mention} This command or channel is ignored here.", delete_after=6)
     elif ignore_type == "user":
-      await ctx.reply(f"You are ignored.", mention_author=False)
-
+      await ctx.reply(f"{E.OFFLINE} You are ignored.", mention_author=False)
 
   async def on_help_command_error(self, ctx, error):
     errors = [
@@ -36,7 +35,7 @@ class HelpCommand(commands.HelpCommand):
     ]
     if not type(error) in errors:
       logging.getLogger("shizumusic.help").error("Help command failed", exc_info=error)
-      await self.context.reply("Something went wrong while opening help. Please try again in a moment.",
+      await self.context.reply(f"{E.WARNING} Something went wrong while opening help. Please try again in a moment.",
                                mention_author=False)
     else:
       if type(error) == commands.CommandOnCooldown:
@@ -44,38 +43,21 @@ class HelpCommand(commands.HelpCommand):
 
     return await super().on_help_command_error(ctx, error)
 
-  
   async def command_not_found(self, string: str) -> None:
     ctx = self.context
     check_ignore = await ignore_check().predicate(ctx)
     check_blacklist = await blacklist_check().predicate(ctx)
 
-    if not check_blacklist:
-        return
+    if not check_blacklist or not check_ignore:
+      return
 
-    if not check_ignore:
-        await self.send_ignore_message(ctx, "command")
-        return
+    data = await getConfig(ctx.guild.id) if ctx.guild else {"prefix": config.DEFAULT_PREFIX}
+    prefix = data.get("prefix", config.DEFAULT_PREFIX)
+    author_name = getattr(ctx.author, "display_name", str(ctx.author))
 
-    cmds = (str(cmd) for cmd in self.context.bot.walk_commands())
-    matches = get_close_matches(string, cmds)
+    view = vhelp.command_detail_view(string, prefix, author_name)
+    await ctx.reply(view=view, mention_author=False, allowed_mentions=NO_MENTIONS)
 
-    embed = discord.Embed(
-        title="",
-        description=f"Command not found with the name `{string}`.",
-        color=discord.Color.red()
-    )
-    embed.set_thumbnail(url=self.context.bot.user.display_avatar.url)
-    embed.set_author(name="Command Not Found", icon_url=self.context.bot.user.display_avatar.url)
-    embed.set_footer(text=f"Requested By {ctx.author}",
-                       icon_url=ctx.author.display_avatar.url)
-    if matches:
-        match_list = "\n".join([f"{index}. `{match}`" for index, match in enumerate(matches, start=1)])
-        embed.add_field(name="Did you mean:", value=match_list, inline=True)
-
-    await ctx.reply(embed=embed)
-
-  
   async def send_bot_help(self, mapping):
     ctx = self.context
     check_ignore = await ignore_check().predicate(ctx)
@@ -88,13 +70,11 @@ class HelpCommand(commands.HelpCommand):
       await self.send_ignore_message(ctx, "command")
       return
 
-    
     data = await getConfig(self.context.guild.id) if self.context.guild else {"prefix": config.DEFAULT_PREFIX}
     prefix = data.get("prefix", config.DEFAULT_PREFIX)
 
     view = vhelp.HelpView(self.context, prefix)
-    embed = view.get_embed("home")
-    view.message = await self.context.reply(embed=embed, view=view, mention_author=False)
+    view.message = await self.context.reply(view=view, mention_author=False, allowed_mentions=NO_MENTIONS)
 
   async def send_command_help(self, command):
     ctx = self.context
@@ -106,24 +86,10 @@ class HelpCommand(commands.HelpCommand):
 
     data = await getConfig(ctx.guild.id) if ctx.guild else {"prefix": config.DEFAULT_PREFIX}
     prefix = data.get("prefix", config.DEFAULT_PREFIX)
+    author_name = getattr(ctx.author, "display_name", str(ctx.author))
 
-    embed = discord.Embed(
-        title=f"{E.MUSIC} Command: {command.qualified_name}",
-        description=command.help or "No description provided for this command.",
-        color=config.EMBED_COLOR,
-    )
-    embed.set_author(name=f"{config.NAME} • Command Help", icon_url=self.context.bot.user.display_avatar.url)
-    embed.add_field(
-        name=f"{E.TICK} Usage",
-        value=f"`{prefix}{command.qualified_name} {command.signature}`".strip(),
-        inline=False,
-    )
-    if command.aliases:
-        alias_str = ", ".join(f"`{a}`" for a in command.aliases)
-        embed.add_field(name=f"{E.VOICE} Aliases", value=alias_str, inline=False)
-
-    embed.set_footer(text=f"Thanks for choosing {config.NAME}!")
-    await self.context.reply(embed=embed, mention_author=False)
+    view = vhelp.command_detail_view(command.qualified_name, prefix, author_name)
+    await self.context.reply(view=view, mention_author=False, allowed_mentions=NO_MENTIONS)
 
   def get_command_signature(self, command: commands.Command) -> str:
     parent = command.full_parent_name

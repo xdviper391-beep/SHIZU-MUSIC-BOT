@@ -8,6 +8,7 @@ from discord import app_commands
 from discord.ext import commands
 
 from core import Context, ShizuMusic
+from services.style import get_embed_color
 from utils import config
 from utils import emojis as E
 from utils.Tools import blacklist_check, getConfig, ignore_check, updateConfig
@@ -55,7 +56,7 @@ class Prefix(commands.Cog):
                 f"{E.TICK} Successfully updated server prefix to `{prefix_clean}`\n\n"
                 f"You can now run commands using `{prefix_clean}play`, `{prefix_clean}help`, etc."
             ),
-            color=0x1DB954,
+            color=get_embed_color(),
         )
         embed.set_author(name="Prefix Updated", icon_url=self.bot.user.display_avatar.url)
         embed.set_footer(text=f"Thanks for choosing {config.NAME}!")
@@ -109,10 +110,10 @@ class Prefix(commands.Cog):
         current = data["prefix"]
         embed = discord.Embed(
             description=(
-                f"{E.MUSIC} The current prefix for this server is `{current}`\n\n"
+                f"{E.CONFIG} The current prefix for this server is `{current}`\n\n"
                 f"To change it, use `{current}setprefix <new_prefix>`"
             ),
-            color=0x5865F2,
+            color=get_embed_color(),
         )
         embed.set_author(name=f"{config.NAME} • Prefix", icon_url=self.bot.user.display_avatar.url)
         embed.set_footer(text=f"Thanks for choosing {config.NAME}!")

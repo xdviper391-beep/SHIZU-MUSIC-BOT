@@ -103,7 +103,7 @@ def help_embed() -> discord.Embed:
 
 
 def panel_embed(state: RemixState) -> discord.Embed:
-    embed = discord.Embed(title="\U0001f39b\ufe0f Remix Console", description=summarize(state), color=GREY)
+    embed = discord.Embed(title=f"{E.REMIX} Remix Console", description=summarize(state), color=GREY)
     footer = []
     if state.needs_limiter:
         footer.append("Limiter on (stops the bass boost clipping)")
@@ -138,7 +138,7 @@ class RemixPanel(discord.ui.View):
                     fx = EFFECTS[key]
                     self.fx_btns[key] = self._add(fx.label, BE.get(key), self._fx_callback(key), row)
         if back is not None:
-            self._add("Back", "\u25c0\ufe0f", self._go_back, len(LAYOUT) - 1, discord.ButtonStyle.primary)
+            self._add("Back", E.ARROW_WHITE, self._go_back, len(LAYOUT) - 1, discord.ButtonStyle.primary)
         self.sync()
 
     # -- building ----------------------------------------------------------------

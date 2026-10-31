@@ -1374,8 +1374,8 @@ class SpotifyAPI:
 class PlatformSelectView(View):
     # yt-dlp has no JioSaavn *search* (JioSaavn links still play); YouTube and SoundCloud search work.
     PLATFORMS = [
-        ("YouTube", "ytsearch", discord.ButtonStyle.red),
-        ("SoundCloud", "scsearch", discord.ButtonStyle.grey),
+        ("YouTube", "ytsearch", discord.ButtonStyle.red, E.YOUTUBE),
+        ("SoundCloud", "scsearch", discord.ButtonStyle.grey, None),
     ]
 
     def __init__(self, cog: "Music", ctx: commands.Context, query: str):
@@ -1383,8 +1383,10 @@ class PlatformSelectView(View):
         self.cog = cog
         self.ctx = ctx
         self.query = query
-        for name, source, style in self.PLATFORMS:
-            button = Button(label=name, style=style)
+        for item in self.PLATFORMS:
+            name, source, style = item[0], item[1], item[2]
+            emoji = item[3] if len(item) > 3 else None
+            button = Button(label=name, style=style, emoji=emoji)
             button.callback = self._make_callback(name, source)
             self.add_item(button)
 
@@ -1457,9 +1459,9 @@ class SearchResultView(View):
                 await interaction.followup.send(f"{E.WARNING} {exc}")
                 return
             if started:
-                await interaction.followup.send(f"Started playing `{track.title}`.")
+                await interaction.followup.send(f"{E.PLAY} Started playing `{track.title}`.")
             else:
-                await interaction.followup.send(f"Added `{track.title}` to the queue.")
+                await interaction.followup.send(f"{E.ADD} Added `{track.title}` to the queue.")
 
         return callback
 
@@ -1636,7 +1638,7 @@ class OthersPanel(_PlayerView):
         for button, slot in (
             (self.previous_button, "previous"), (self.rewind_button, "rewind"), (self.forward_button, "forward"),
             (self.replay_button, "replay"), (self.shuffle_button, "shuffle"), (self.loop_button, "loop"),
-            (self.remix_button, "remix"), (self.stop_button, "stop"),
+            (self.remix_button, "remix"), (self.stop_button, "stop"), (self.stay_button, "autoplay"),
         ):
             button.emoji = BE.get(slot)
         self.sync()
@@ -2506,7 +2508,7 @@ class Music(commands.Cog):
             return
 
         embed = discord.Embed(
-            title="Select a platform to search from:",
+            title=f"{E.MUSIC} Select a platform to search from:",
             description="Click a button below to choose.",
             color=0xFF0000,
         )
@@ -2528,7 +2530,7 @@ class Music(commands.Cog):
         length = track.length / 1000
         name, color, _ = source_info(track)
 
-        embed = discord.Embed(title="Now Playing", color=color)
+        embed = discord.Embed(title=f"{E.DISC} Now Playing", color=color)
         embed.add_field(name="Track", value=md_link(track.title, track.uri), inline=False)
         embed.add_field(name="Song By", value=track.author or "Unknown", inline=False)
         if track.is_stream:
@@ -2739,7 +2741,7 @@ class Music(commands.Cog):
         ]
         embeds = DescriptionEmbedPaginator(
             entries=entries,
-            title="Current Queue",
+            title=f"{E.SLIDER} Current Queue",
             description="List of upcoming songs.",
             per_page=10,
             color=0x000000,
@@ -3108,17 +3110,12 @@ class Music(commands.Cog):
         ctx = await self.client.get_context(message)
         if ctx.valid:
             return  # "@bot play ..." is a real command, let it run
-        prefix = (await getConfig(message.guild.id))["prefix"]
-        embed = discord.Embed(
-            description=(
-                f"{E.MUSIC} Hey {message.author.mention}! My prefix in this server is `{prefix}`.\n"
-                f"Use `{prefix}help` to see my commands, or `{prefix}play <song>` to start music."
-            ),
-            color=0x000000,
-        )
-        embed.set_author(name=self.client.user.name, icon_url=self.client.user.display_avatar.url)
-        embed.set_footer(text=f"Thanks for choosing {config.NAME}!")
+        data = await getConfig(message.guild.id)
+        prefix = data.get("prefix", config.DEFAULT_PREFIX)
+
+        from utils.style import MentionView, NO_MENTIONS
+        view = MentionView(message.author, prefix, self.client)
         try:
-            await message.channel.send(embed=embed)
+            view.message = await message.channel.send(view=view, allowed_mentions=discord.AllowedMentions(users=True))
         except discord.HTTPException:
             pass
