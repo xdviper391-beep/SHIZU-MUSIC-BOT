@@ -1,0 +1,1374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Shizu Music - Realtime Discord UI Preview</title>
+  <script src="https://www.gstatic.com/antigravity/web/dev/tailwindcss.min.js"></script>
+  <style>
+    /* Discord Theme & Custom Aesthetics */
+    :root {
+      --dc-bg: #313338;
+      --dc-card: #2b2d31;
+      --dc-sidebar: #1e1f22;
+      --dc-darker: #111214;
+      --dc-text: #dbdee1;
+      --dc-text-muted: #949ba4;
+      --dc-text-header: #f2f3f5;
+      --dc-accent: #8a2be2;
+      --dc-blurple: #5865f2;
+      --dc-green: #23a55a;
+      --dc-red: #da373c;
+      --dc-yellow: #f0b232;
+    }
+
+    body {
+      background-color: var(--dc-sidebar);
+      color: var(--dc-text);
+      font-family: 'gg sans', 'Noto Sans', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      margin: 0;
+      padding: 0;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Small Caps Fancy Font styling */
+    .fancy-title {
+      font-feature-settings: "smcp" 1;
+      letter-spacing: 0.05em;
+      text-transform: lowercase;
+    }
+
+    /* Animated Emoji Styling */
+    .dc-emoji {
+      display: inline-block;
+      vertical-align: -0.22em;
+      height: 1.35em;
+      width: 1.35em;
+      object-fit: contain;
+    }
+
+    .dc-emoji-lg {
+      display: inline-block;
+      vertical-align: -0.25em;
+      height: 1.6em;
+      width: 1.6em;
+      object-fit: contain;
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+      height: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: #2b2d31;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: #1a1b1e;
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: #111214;
+    }
+
+    /* Discord Bot Badge */
+    .bot-tag {
+      background: #5865f2;
+      color: #ffffff;
+      font-size: 10px;
+      font-weight: 700;
+      line-height: 15px;
+      padding: 0 4px;
+      border-radius: 3px;
+      vertical-align: middle;
+      margin-left: 6px;
+    }
+
+    /* Components V2 Container Styling */
+    .dc-container {
+      background: #2b2d31;
+      border-left: 4px solid var(--dc-accent);
+      border-radius: 8px;
+      padding: 16px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
+    }
+
+    .dc-separator {
+      height: 1px;
+      background: #3f4147;
+      margin: 12px 0;
+    }
+
+    /* Discord Buttons */
+    .btn-dc {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 7px 16px;
+      border-radius: 4px;
+      font-size: 13px;
+      font-weight: 500;
+      transition: background-color 0.15s ease, transform 0.05s ease;
+      cursor: pointer;
+      user-select: none;
+    }
+    .btn-dc:active {
+      transform: scale(0.98);
+    }
+    .btn-primary {
+      background: #5865f2;
+      color: #ffffff;
+    }
+    .btn-primary:hover {
+      background: #4752c4;
+    }
+    .btn-secondary {
+      background: #4e5058;
+      color: #ffffff;
+    }
+    .btn-secondary:hover {
+      background: #6d6f78;
+    }
+    .btn-success {
+      background: #23a55a;
+      color: #ffffff;
+    }
+    .btn-success:hover {
+      background: #1f924f;
+    }
+    .btn-danger {
+      background: #da373c;
+      color: #ffffff;
+    }
+    .btn-danger:hover {
+      background: #b52c31;
+    }
+    .btn-link {
+      background: #4e5058;
+      color: #00a8fc;
+    }
+    .btn-link:hover {
+      background: #6d6f78;
+      color: #ffffff;
+    }
+
+    /* Select Dropdown */
+    .dc-select {
+      width: 100%;
+      background: #1e1f22;
+      border: 1px solid #3f4147;
+      color: #dbdee1;
+      padding: 9px 12px;
+      border-radius: 4px;
+      font-size: 13.5px;
+      cursor: pointer;
+      outline: none;
+    }
+    .dc-select:focus {
+      border-color: #5865f2;
+    }
+
+    /* Live Waveform Pulse */
+    @keyframes barPulse {
+      0%, 100% { height: 6px; }
+      50% { height: 18px; }
+    }
+    .wave-bar {
+      display: inline-block;
+      width: 3px;
+      background: #8a2be2;
+      border-radius: 2px;
+      margin: 0 1px;
+      animation: barPulse 1.2s infinite ease-in-out;
+    }
+    .wave-bar:nth-child(2) { animation-delay: 0.2s; }
+    .wave-bar:nth-child(3) { animation-delay: 0.4s; }
+    .wave-bar:nth-child(4) { animation-delay: 0.6s; }
+    .wave-bar:nth-child(5) { animation-delay: 0.8s; }
+  </style>
+</head>
+<body class="bg-[#1e1f22] text-[#dbdee1] flex flex-col md:flex-row min-h-screen">
+
+  <!-- Left Sidebar Navigation -->
+  <aside class="w-full md:w-72 bg-[#18191c] p-4 flex flex-col border-r border-[#232428] shrink-0">
+    <!-- Bot Header Card -->
+    <div class="flex items-center gap-3 p-3 bg-[#232428] rounded-xl mb-4 border border-[#2b2d31]">
+      <img src="https://cdn.discordapp.com/emojis/792704150843949056.gif" alt="DJ" class="w-11 h-11 rounded-full bg-[#313338] p-1 border border-[#8a2be2]">
+      <div class="overflow-hidden">
+        <div class="flex items-center">
+          <span class="font-bold text-[#f2f3f5] text-sm truncate">SHIZU MUSIC</span>
+          <span class="bot-tag">BOT</span>
+        </div>
+        <p class="text-xs text-[#23a55a] flex items-center gap-1 font-medium mt-0.5">
+          <span class="w-2 h-2 rounded-full bg-[#23a55a] inline-block"></span> 24/7 Online • V4.2
+        </p>
+      </div>
+    </div>
+
+    <!-- Navigation Menu -->
+    <div class="text-[11px] font-bold text-[#949ba4] uppercase tracking-wider mb-2 px-2">Message Previews</div>
+    <nav class="space-y-1 text-sm font-medium">
+      <button onclick="switchTab('all')" id="tab-btn-all" class="nav-item w-full flex items-center justify-between px-3 py-2.5 rounded-md text-left transition bg-[#35373c] text-white">
+        <span class="flex items-center gap-2.5">
+          <img src="https://cdn.discordapp.com/emojis/1565867959958642729.gif" class="dc-emoji" alt="dot">
+          <span>Complete Live Chat Flow</span>
+        </span>
+        <span class="text-xs bg-[#5865f2] px-1.5 py-0.5 rounded text-white font-bold">ALL</span>
+      </button>
+
+      <button onclick="switchTab('help')" id="tab-btn-help" class="nav-item w-full flex items-center gap-2.5 px-3 py-2.5 rounded-md text-left transition text-[#949ba4] hover:bg-[#35373c]/50 hover:text-[#dbdee1]">
+        <img src="https://cdn.discordapp.com/emojis/1565839999063171185.gif" class="dc-emoji" alt="config">
+        <span>Help Menu (.help)</span>
+      </button>
+
+      <button onclick="switchTab('mention')" id="tab-btn-mention" class="nav-item w-full flex items-center gap-2.5 px-3 py-2.5 rounded-md text-left transition text-[#949ba4] hover:bg-[#35373c]/50 hover:text-[#dbdee1]">
+        <img src="https://cdn.discordapp.com/emojis/1565842042029084743.gif" class="dc-emoji" alt="bell">
+        <span>Bot Mention (@SHIZU)</span>
+      </button>
+
+      <button onclick="switchTab('welcome')" id="tab-btn-welcome" class="nav-item w-full flex items-center gap-2.5 px-3 py-2.5 rounded-md text-left transition text-[#949ba4] hover:bg-[#35373c]/50 hover:text-[#dbdee1]">
+        <img src="https://cdn.discordapp.com/emojis/1565996750152667236.gif" class="dc-emoji" alt="heart">
+        <span>Guild Welcome DM</span>
+      </button>
+
+      <button onclick="switchTab('player')" id="tab-btn-player" class="nav-item w-full flex items-center gap-2.5 px-3 py-2.5 rounded-md text-left transition text-[#949ba4] hover:bg-[#35373c]/50 hover:text-[#dbdee1]">
+        <img src="https://cdn.discordapp.com/emojis/1566217023615279286.gif" class="dc-emoji" alt="disc">
+        <span>Now Playing Player Card</span>
+      </button>
+
+      <button onclick="switchTab('remix')" id="tab-btn-remix" class="nav-item w-full flex items-center gap-2.5 px-3 py-2.5 rounded-md text-left transition text-[#949ba4] hover:bg-[#35373c]/50 hover:text-[#dbdee1]">
+        <img src="https://cdn.discordapp.com/emojis/1566217201411817503.gif" class="dc-emoji" alt="remix">
+        <span>Remix Console (.remix)</span>
+      </button>
+
+      <button onclick="switchTab('queue')" id="tab-btn-queue" class="nav-item w-full flex items-center gap-2.5 px-3 py-2.5 rounded-md text-left transition text-[#949ba4] hover:bg-[#35373c]/50 hover:text-[#dbdee1]">
+        <img src="https://cdn.discordapp.com/emojis/1566216988546699354.gif" class="dc-emoji" alt="slider">
+        <span>Queue & Search</span>
+      </button>
+
+      <button onclick="switchTab('errors')" id="tab-btn-errors" class="nav-item w-full flex items-center gap-2.5 px-3 py-2.5 rounded-md text-left transition text-[#949ba4] hover:bg-[#35373c]/50 hover:text-[#dbdee1]">
+        <img src="https://cdn.discordapp.com/emojis/1565853410702528604.gif" class="dc-emoji" alt="test">
+        <span>Errors & Cooldowns</span>
+      </button>
+    </nav>
+
+    <!-- 21 Animated Discord Emojis Registry Drawer -->
+    <div class="mt-auto pt-4 border-t border-[#2b2d31]">
+      <div class="text-[11px] font-bold text-[#949ba4] uppercase tracking-wider mb-2 flex items-center justify-between">
+        <span>Live Emojis (21/21)</span>
+        <span class="text-[#23a55a]">ACTIVE</span>
+      </div>
+      <div class="grid grid-cols-7 gap-1.5 p-2 bg-[#232428] rounded-lg border border-[#2b2d31]">
+        <img src="https://cdn.discordapp.com/emojis/1565840667224051865.gif" title="bb_arrow_white" class="w-6 h-6 object-contain" alt="">
+        <img src="https://cdn.discordapp.com/emojis/1565870886823657553.gif" title="arrow_white" class="w-6 h-6 object-contain" alt="">
+        <img src="https://cdn.discordapp.com/emojis/1565839999063171185.gif" title="config" class="w-6 h-6 object-contain" alt="">
+        <img src="https://cdn.discordapp.com/emojis/1565867959958642729.gif" title="cyan_dot" class="w-6 h-6 object-contain" alt="">
+        <img src="https://cdn.discordapp.com/emojis/1565996750152667236.gif" title="heart_wb" class="w-6 h-6 object-contain" alt="">
+        <img src="https://cdn.discordapp.com/emojis/1565842042029084743.gif" title="ne_bell" class="w-6 h-6 object-contain" alt="">
+        <img src="https://cdn.discordapp.com/emojis/1565839892817117405.gif" title="offline" class="w-6 h-6 object-contain" alt="">
+        <img src="https://cdn.discordapp.com/emojis/1565839926241788178.gif" title="online" class="w-6 h-6 object-contain" alt="">
+        <img src="https://cdn.discordapp.com/emojis/1565841055574790277.gif" title="youtube" class="w-6 h-6 object-contain" alt="">
+        <img src="https://cdn.discordapp.com/emojis/1565853410702528604.gif" title="test" class="w-6 h-6 object-contain" alt="">
+        <img src="https://cdn.discordapp.com/emojis/792704150843949056.gif" title="NE_peepoDJ" class="w-6 h-6 object-contain" alt="">
+        <img src="https://cdn.discordapp.com/emojis/1566217092452065401.gif" title="emoji_18 (play)" class="w-6 h-6 object-contain" alt="">
+        <img src="https://cdn.discordapp.com/emojis/1566217119149064313.gif" title="emoji_19 (pause)" class="w-6 h-6 object-contain" alt="">
+        <img src="https://cdn.discordapp.com/emojis/1566217143329104002.gif" title="emoji_20 (shuffle)" class="w-6 h-6 object-contain" alt="">
+        <img src="https://cdn.discordapp.com/emojis/1566217064220463255.gif" title="emoji_17 (headphones)" class="w-6 h-6 object-contain" alt="">
+        <img src="https://cdn.discordapp.com/emojis/1566217023615279286.gif" title="emoji_16 (disc)" class="w-6 h-6 object-contain" alt="">
+        <img src="https://cdn.discordapp.com/emojis/1566216988546699354.gif" title="emoji_15 (slider)" class="w-6 h-6 object-contain" alt="">
+        <img src="https://cdn.discordapp.com/emojis/1566216923635515492.gif" title="emoji_14 (notes)" class="w-6 h-6 object-contain" alt="">
+        <img src="https://cdn.discordapp.com/emojis/1566216873006080040.gif" title="emoji_13 (heart beat)" class="w-6 h-6 object-contain" alt="">
+        <img src="https://cdn.discordapp.com/emojis/1566217201411817503.gif" title="emoji_21 (remix)" class="w-6 h-6 object-contain" alt="">
+        <img src="https://cdn.discordapp.com/emojis/1566217188308951190.gif" title="emoji_21 (stop)" class="w-6 h-6 object-contain" alt="">
+      </div>
+      <p class="text-[10px] text-[#949ba4] text-center mt-1.5 font-medium">Synced from TESTING SHIZU Guild</p>
+    </div>
+  </aside>
+
+  <!-- Main Discord Chat Area -->
+  <main class="flex-1 bg-[#313338] flex flex-col min-w-0">
+    <!-- Channel Header Bar -->
+    <header class="h-12 border-b border-[#232428] px-4 flex items-center justify-between bg-[#313338] shrink-0 shadow-sm">
+      <div class="flex items-center gap-2 min-w-0">
+        <span class="text-xl text-[#949ba4] font-bold">#</span>
+        <span class="font-bold text-[#f2f3f5] text-sm">🎵・music-lounge</span>
+        <span class="text-xs text-[#949ba4] hidden sm:inline ml-2 border-l border-[#4e5058] pl-2 truncate">
+          24/7 Crystal Clear Music • Interactive Components V2 System
+        </span>
+      </div>
+      <div class="flex items-center gap-3 text-sm">
+        <span class="text-xs bg-[#2b2d31] border border-[#3f4147] px-2.5 py-1 rounded text-[#dbdee1] flex items-center gap-1.5">
+          <span class="wave-bar"></span>
+          <span class="wave-bar"></span>
+          <span class="wave-bar"></span>
+          <span class="wave-bar"></span>
+          <span class="font-medium text-xs ml-1">Lavalink 4.2 Connected</span>
+        </span>
+      </div>
+    </header>
+
+    <!-- Chat Messages Scroll Container -->
+    <div class="flex-1 overflow-y-auto p-4 space-y-6 max-w-4xl w-full mx-auto">
+
+      <!-- ============================================================== -->
+      <!-- SECTION 1: BOT MENTION REPLY                                   -->
+      <!-- ============================================================== -->
+      <section id="sec-mention" class="preview-section space-y-2">
+        <!-- User Mention Prompt -->
+        <div class="flex items-start gap-4">
+          <div class="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center font-bold text-white shrink-0">U</div>
+          <div class="flex-1">
+            <div class="flex items-baseline gap-2">
+              <span class="font-semibold text-white text-sm">User</span>
+              <span class="text-[11px] text-[#949ba4]">Today at 05:12 AM</span>
+            </div>
+            <div class="text-sm mt-0.5 text-[#dbdee1]">
+              <span class="bg-[#5865f2]/20 text-[#c9cdfb] font-medium px-1 rounded">@SHIZU MUSIC</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bot Response (Components V2 Container) -->
+        <div class="flex items-start gap-4 pl-0">
+          <img src="https://cdn.discordapp.com/emojis/792704150843949056.gif" alt="Bot Avatar" class="w-10 h-10 rounded-full bg-[#1e1f22] p-0.5 border border-[#8a2be2] shrink-0">
+          <div class="flex-1">
+            <div class="flex items-baseline gap-2">
+              <span class="font-semibold text-[#8a2be2] text-sm">SHIZU MUSIC</span>
+              <span class="bot-tag">BOT</span>
+              <span class="text-[11px] text-[#949ba4]">Today at 05:12 AM</span>
+            </div>
+
+            <!-- Modern Container -->
+            <div class="dc-container mt-1.5 max-w-2xl">
+              <h2 class="text-base font-bold text-[#f2f3f5] flex items-center gap-2 mb-2">
+                <img src="https://cdn.discordapp.com/emojis/792704150843949056.gif" class="dc-emoji-lg" alt="">
+                <span class="fancy-title">ꜱʜɪᴢᴜ ᴍᴜꜱɪᴄ</span>
+              </h2>
+              <div class="space-y-1.5 text-sm text-[#dbdee1]">
+                <p class="flex items-start gap-2">
+                  <img src="https://cdn.discordapp.com/emojis/1565840667224051865.gif" class="dc-emoji mt-0.5" alt="">
+                  <span>Hey <span class="bg-[#5865f2]/20 text-[#c9cdfb] px-1 rounded font-medium">@User</span>! Serving uninterrupted 24/7 beats with crystal-clear audio.</span>
+                </p>
+                <p class="flex items-start gap-2">
+                  <img src="https://cdn.discordapp.com/emojis/1565840667224051865.gif" class="dc-emoji mt-0.5" alt="">
+                  <span>Current Prefix: <code class="bg-[#1e1f22] px-1.5 py-0.5 rounded text-white font-mono text-xs">.</code> · Play songs with <code class="bg-[#1e1f22] px-1.5 py-0.5 rounded text-white font-mono text-xs">.play &lt;song&gt;</code> or <code class="bg-[#1e1f22] px-1.5 py-0.5 rounded text-white font-mono text-xs">/play</code>.</span>
+                </p>
+                <p class="flex items-start gap-2">
+                  <img src="https://cdn.discordapp.com/emojis/1565840667224051865.gif" class="dc-emoji mt-0.5" alt="">
+                  <span>Tap <strong>Open Help Menu</strong> below or type <code class="bg-[#1e1f22] px-1.5 py-0.5 rounded text-white font-mono text-xs">.help</code> to explore all commands.</span>
+                </p>
+              </div>
+
+              <div class="dc-separator"></div>
+
+              <!-- ActionRow Buttons -->
+              <div class="flex flex-wrap gap-2.5 items-center">
+                <button onclick="switchTab('help')" class="btn-dc btn-primary">
+                  <img src="https://cdn.discordapp.com/emojis/1565839999063171185.gif" class="dc-emoji" alt="">
+                  <span>Open Help Menu</span>
+                </button>
+                <a href="https://discord.com" target="_blank" class="btn-dc btn-link">
+                  <img src="https://cdn.discordapp.com/emojis/1565996750152667236.gif" class="dc-emoji" alt="">
+                  <span>Invite Bot</span>
+                </a>
+                <a href="https://discord.gg" target="_blank" class="btn-dc btn-secondary">
+                  <img src="https://cdn.discordapp.com/emojis/1565842042029084743.gif" class="dc-emoji" alt="">
+                  <span>Support Server</span>
+                </a>
+              </div>
+
+              <div class="dc-separator"></div>
+
+              <div class="text-xs text-[#949ba4] flex items-center gap-1.5">
+                <img src="https://cdn.discordapp.com/emojis/1565867959958642729.gif" class="dc-emoji" alt="">
+                <span>Powered by Lavalink v4.2 & YouTube OAuth • Developers: viper_391, toxic_391</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================== -->
+      <!-- SECTION 2: INTERACTIVE HELP MENU                               -->
+      <!-- ============================================================== -->
+      <section id="sec-help" class="preview-section space-y-2">
+        <div class="flex items-start gap-4">
+          <div class="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center font-bold text-white shrink-0">U</div>
+          <div class="flex-1">
+            <div class="flex items-baseline gap-2">
+              <span class="font-semibold text-white text-sm">User</span>
+              <span class="text-[11px] text-[#949ba4]">Today at 05:13 AM</span>
+            </div>
+            <div class="text-sm mt-0.5 text-[#dbdee1]">
+              <code class="bg-[#1e1f22] px-1.5 py-0.5 rounded text-white font-mono text-xs">.help</code>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bot Help Response -->
+        <div class="flex items-start gap-4">
+          <img src="https://cdn.discordapp.com/emojis/792704150843949056.gif" alt="Bot Avatar" class="w-10 h-10 rounded-full bg-[#1e1f22] p-0.5 border border-[#8a2be2] shrink-0">
+          <div class="flex-1">
+            <div class="flex items-baseline gap-2">
+              <span class="font-semibold text-[#8a2be2] text-sm">SHIZU MUSIC</span>
+              <span class="bot-tag">BOT</span>
+              <span class="text-[11px] text-[#949ba4]">Today at 05:13 AM</span>
+            </div>
+
+            <!-- Dynamic Help Container -->
+            <div class="dc-container mt-1.5 max-w-2xl border-l-[#8a2be2]">
+              <!-- Content Pane dynamically injected by JS -->
+              <div id="help-content-pane">
+                <!-- Injected via updateHelpView() -->
+              </div>
+
+              <div class="dc-separator"></div>
+
+              <!-- ActionRow 1: Category Dropdown -->
+              <div class="mb-2.5">
+                <label class="block text-[11px] font-bold text-[#949ba4] uppercase tracking-wider mb-1">Browse Category</label>
+                <select id="help-cat-select" onchange="onCategorySelect(this.value)" class="dc-select">
+                  <option value="home">⚙️ Home — Overview, bot stats & getting started</option>
+                  <option value="music">🎵 Music — Play, search, nowplaying, join & disconnect</option>
+                  <option value="queue">🎚️ Queue — Queue view, clear, shuffle, loop & autoplay</option>
+                  <option value="player">🎧 Player Controls — Pause, resume, skip, seek, volume & 24/7</option>
+                  <option value="fx">✨ Remix & FX — Real-time audio filters, bassboost, lofi & 8D</option>
+                  <option value="settings">⚙️ Settings — Server prefix and session controls</option>
+                  <option value="info">• Info & Links — Latency, music sources & credits</option>
+                </select>
+              </div>
+
+              <!-- ActionRow 2: Command Inspection Dropdown -->
+              <div id="help-cmd-row" class="mb-3">
+                <label class="block text-[11px] font-bold text-[#949ba4] uppercase tracking-wider mb-1">Select Command for Details</label>
+                <select id="help-cmd-select" onchange="onCommandSelect(this.value)" class="dc-select">
+                  <!-- Dynamically populated -->
+                </select>
+              </div>
+
+              <!-- ActionRow 3: Navigation Buttons -->
+              <div class="flex flex-wrap gap-2 items-center mb-2.5">
+                <button onclick="navHelp('home')" class="btn-dc btn-secondary">
+                  <img src="https://cdn.discordapp.com/emojis/1565839999063171185.gif" class="dc-emoji" alt="">
+                  <span>Home</span>
+                </button>
+                <button onclick="navHelp('prev')" class="btn-dc btn-secondary">
+                  <img src="https://cdn.discordapp.com/emojis/1565870886823657553.gif" class="dc-emoji" alt="">
+                  <span>Previous</span>
+                </button>
+                <button onclick="navHelp('next')" class="btn-dc btn-primary">
+                  <img src="https://cdn.discordapp.com/emojis/1565840667224051865.gif" class="dc-emoji" alt="">
+                  <span>Next</span>
+                </button>
+                <button onclick="navHelp('close')" class="btn-dc btn-danger">
+                  <img src="https://cdn.discordapp.com/emojis/1565839892817117405.gif" class="dc-emoji" alt="">
+                  <span>Close</span>
+                </button>
+              </div>
+
+              <!-- ActionRow 4: External Link Buttons -->
+              <div class="flex flex-wrap gap-2 items-center">
+                <a href="https://discord.com" target="_blank" class="btn-dc btn-link">
+                  <img src="https://cdn.discordapp.com/emojis/1565996750152667236.gif" class="dc-emoji" alt="">
+                  <span>Invite Bot</span>
+                </a>
+                <a href="https://discord.gg" target="_blank" class="btn-dc btn-secondary">
+                  <img src="https://cdn.discordapp.com/emojis/1565842042029084743.gif" class="dc-emoji" alt="">
+                  <span>Support Server</span>
+                </a>
+              </div>
+
+              <div class="dc-separator"></div>
+
+              <!-- Footer with live section counter -->
+              <div id="help-footer" class="text-xs text-[#949ba4] flex items-center gap-1.5">
+                <img src="https://cdn.discordapp.com/emojis/1565867959958642729.gif" class="dc-emoji" alt="">
+                <span>Section 1/7 • Requested by User</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================== -->
+      <!-- SECTION 3: GUILD WELCOME / JOIN MESSAGE                        -->
+      <!-- ============================================================== -->
+      <section id="sec-welcome" class="preview-section space-y-2">
+        <div class="flex items-start gap-4">
+          <img src="https://cdn.discordapp.com/emojis/792704150843949056.gif" alt="Bot Avatar" class="w-10 h-10 rounded-full bg-[#1e1f22] p-0.5 border border-[#8a2be2] shrink-0">
+          <div class="flex-1">
+            <div class="flex items-baseline gap-2">
+              <span class="font-semibold text-[#8a2be2] text-sm">SHIZU MUSIC</span>
+              <span class="bot-tag">BOT</span>
+              <span class="text-[11px] text-[#949ba4]">Today at 05:14 AM</span>
+            </div>
+
+            <!-- Modern Welcome Container -->
+            <div class="dc-container mt-1.5 max-w-2xl border-l-[#8a2be2]">
+              <h2 class="text-base font-bold text-[#f2f3f5] flex items-center gap-2 mb-1.5">
+                <img src="https://cdn.discordapp.com/emojis/1565996750152667236.gif" class="dc-emoji-lg" alt="">
+                <span class="fancy-title">ᴛʜᴀɴᴋꜱ ꜰᴏʀ ᴄʜᴏᴏꜱɪɴɢ ꜱʜɪᴢᴜ ᴍᴜꜱɪᴄ</span>
+              </h2>
+              <div class="space-y-1 text-sm text-[#dbdee1]">
+                <p class="flex items-start gap-2">
+                  <img src="https://cdn.discordapp.com/emojis/1565840667224051865.gif" class="dc-emoji mt-0.5" alt="">
+                  <span><strong>Testing Server</strong> is now ready for crystal-clear 24/7 music streaming!</span>
+                </p>
+                <p class="flex items-start gap-2">
+                  <img src="https://cdn.discordapp.com/emojis/1565840667224051865.gif" class="dc-emoji mt-0.5" alt="">
+                  <span>Enjoy high quality audio with zero lag and rich sound effects.</span>
+                </p>
+              </div>
+
+              <div class="dc-separator"></div>
+
+              <h3 class="text-sm font-bold text-[#f2f3f5] flex items-center gap-2 mb-1.5">
+                <img src="https://cdn.discordapp.com/emojis/792704150843949056.gif" class="dc-emoji" alt="">
+                <span class="fancy-title">Qᴜɪᴄᴋ ꜱᴛᴀʀᴛ ɢᴜɪᴅᴇ</span>
+              </h3>
+              <div class="space-y-1 text-xs text-[#dbdee1] pl-2">
+                <p class="flex items-center gap-2">
+                  <img src="https://cdn.discordapp.com/emojis/1565870886823657553.gif" class="dc-emoji" alt="">
+                  <span>1. Connect to any Voice Channel in your server.</span>
+                </p>
+                <p class="flex items-center gap-2">
+                  <img src="https://cdn.discordapp.com/emojis/1565870886823657553.gif" class="dc-emoji" alt="">
+                  <span>2. Type <code class="bg-[#1e1f22] px-1 py-0.5 rounded text-white font-mono">.play &lt;song title or link&gt;</code> (e.g. <code class="bg-[#1e1f22] px-1 py-0.5 rounded text-white font-mono">.play faded</code>).</span>
+                </p>
+                <p class="flex items-center gap-2">
+                  <img src="https://cdn.discordapp.com/emojis/1565870886823657553.gif" class="dc-emoji" alt="">
+                  <span>3. An interactive player card will post with real-time controls!</span>
+                </p>
+              </div>
+
+              <div class="mt-3">
+                <h3 class="text-sm font-bold text-[#f2f3f5] flex items-center gap-2 mb-1.5">
+                  <img src="https://cdn.discordapp.com/emojis/1565839999063171185.gif" class="dc-emoji" alt="">
+                  <span class="fancy-title">ʜᴇʟᴘꜰᴜʟ ᴄᴏᴍᴍᴀɴᴅꜱ</span>
+                </h3>
+                <div class="space-y-1 text-xs text-[#dbdee1] pl-2">
+                  <p class="flex items-center gap-2">
+                    <img src="https://cdn.discordapp.com/emojis/1565840667224051865.gif" class="dc-emoji" alt="">
+                    <span><code class="bg-[#1e1f22] px-1 py-0.5 rounded text-white font-mono">.help</code> — Interactive command center & button controls</span>
+                  </p>
+                  <p class="flex items-center gap-2">
+                    <img src="https://cdn.discordapp.com/emojis/1565840667224051865.gif" class="dc-emoji" alt="">
+                    <span><code class="bg-[#1e1f22] px-1 py-0.5 rounded text-white font-mono">.setprefix &lt;prefix&gt;</code> — Set custom server prefix</span>
+                  </p>
+                  <p class="flex items-center gap-2">
+                    <img src="https://cdn.discordapp.com/emojis/1565840667224051865.gif" class="dc-emoji" alt="">
+                    <span><code class="bg-[#1e1f22] px-1 py-0.5 rounded text-white font-mono">.247</code> — Keep bot in voice channel 24/7 with autoplay</span>
+                  </p>
+                  <p class="flex items-center gap-2">
+                    <img src="https://cdn.discordapp.com/emojis/1565840667224051865.gif" class="dc-emoji" alt="">
+                    <span><code class="bg-[#1e1f22] px-1 py-0.5 rounded text-white font-mono">.remix</code> — Open audio effects console (Bassboost, Lofi, 8D)</span>
+                  </p>
+                </div>
+              </div>
+
+              <div class="dc-separator"></div>
+
+              <div class="flex flex-wrap gap-2 items-center">
+                <a href="https://discord.com" target="_blank" class="btn-dc btn-primary">
+                  <img src="https://cdn.discordapp.com/emojis/1565996750152667236.gif" class="dc-emoji" alt="">
+                  <span>Invite Bot</span>
+                </a>
+                <a href="https://discord.gg" target="_blank" class="btn-dc btn-secondary">
+                  <img src="https://cdn.discordapp.com/emojis/1565842042029084743.gif" class="dc-emoji" alt="">
+                  <span>Support Server</span>
+                </a>
+              </div>
+
+              <div class="dc-separator"></div>
+
+              <div class="text-xs text-[#949ba4] flex items-center gap-1.5">
+                <img src="https://cdn.discordapp.com/emojis/1565867959958642729.gif" class="dc-emoji" alt="">
+                <span>Developers: viper_391, toxic_391</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================== -->
+      <!-- SECTION 4: NOW PLAYING PLAYER CARD                             -->
+      <!-- ============================================================== -->
+      <section id="sec-player" class="preview-section space-y-2">
+        <div class="flex items-start gap-4">
+          <img src="https://cdn.discordapp.com/emojis/792704150843949056.gif" alt="Bot Avatar" class="w-10 h-10 rounded-full bg-[#1e1f22] p-0.5 border border-[#8a2be2] shrink-0">
+          <div class="flex-1">
+            <div class="flex items-baseline gap-2">
+              <span class="font-semibold text-[#8a2be2] text-sm">SHIZU MUSIC</span>
+              <span class="bot-tag">BOT</span>
+              <span class="text-[11px] text-[#949ba4]">Today at 05:15 AM</span>
+            </div>
+
+            <!-- Player Card Embed with Live Control Buttons -->
+            <div class="bg-[#2b2d31] border-l-4 border-[#8a2be2] rounded-lg p-4 max-w-xl shadow-lg mt-1.5">
+              <div class="flex items-center justify-between text-xs text-[#949ba4] mb-2 font-medium">
+                <span class="flex items-center gap-1.5 text-white font-bold text-sm">
+                  <img src="https://cdn.discordapp.com/emojis/1566217023615279286.gif" class="dc-emoji" alt="">
+                  <span>Now Playing</span>
+                </span>
+                <span class="bg-[#1e1f22] px-2 py-0.5 rounded text-[#23a55a] font-semibold flex items-center gap-1">
+                  <span class="w-1.5 h-1.5 rounded-full bg-[#23a55a] animate-ping"></span> 320 kbps • HD
+                </span>
+              </div>
+
+              <!-- Track Banner & Title -->
+              <div class="flex gap-4 items-center bg-[#1e1f22] p-3 rounded-md border border-[#35373c] mb-3">
+                <div class="w-16 h-16 rounded bg-purple-900/40 flex items-center justify-center shrink-0 border border-purple-500/30 overflow-hidden relative">
+                  <img src="https://cdn.discordapp.com/emojis/1566217023615279286.gif" class="w-10 h-10 object-contain" alt="">
+                </div>
+                <div class="min-w-0 flex-1">
+                  <h4 class="font-bold text-white text-sm truncate">Alan Walker - Faded (Official Audio)</h4>
+                  <p class="text-xs text-[#949ba4] mt-0.5">Author: Alan Walker • YouTube</p>
+                  <p class="text-[11px] text-[#8a2be2] mt-1 font-semibold flex items-center gap-1">
+                    <img src="https://cdn.discordapp.com/emojis/1565841055574790277.gif" class="w-4 h-4" alt="">
+                    <span>YouTube High Fidelity Streaming</span>
+                  </p>
+                </div>
+              </div>
+
+              <!-- Progress Bar -->
+              <div class="space-y-1 mb-3">
+                <div class="w-full bg-[#1e1f22] h-2 rounded-full overflow-hidden flex">
+                  <div class="bg-gradient-to-r from-purple-500 to-[#8a2be2] h-full rounded-full" style="width: 48%;"></div>
+                </div>
+                <div class="flex justify-between text-[11px] text-[#949ba4] font-mono">
+                  <span>01:42</span>
+                  <span class="text-[#8a2be2] font-semibold">Remaining: 01:50</span>
+                  <span>03:32</span>
+                </div>
+              </div>
+
+              <!-- Live Feedback Note (Replies inside the same card!) -->
+              <div id="player-card-note" class="text-xs bg-[#232428] text-[#dbdee1] p-2 rounded mb-3 border border-[#35373c] flex items-center gap-2">
+                <img src="https://cdn.discordapp.com/emojis/1565839926241788178.gif" class="dc-emoji" alt="">
+                <span>Playing uninterrupted in <strong>Voice Lounge</strong> (Session: @User)</span>
+              </div>
+
+              <!-- 4 Primary Player Card Buttons -->
+              <div class="grid grid-cols-4 gap-2">
+                <button onclick="toggleCardAuto()" id="btn-card-auto" class="btn-dc btn-secondary text-xs">
+                  <img src="https://cdn.discordapp.com/emojis/1566216873006080040.gif" class="dc-emoji" alt="">
+                  <span>Auto</span>
+                </button>
+                <button onclick="toggleCardPause()" id="btn-card-pause" class="btn-dc btn-primary text-xs">
+                  <img id="icon-card-pause" src="https://cdn.discordapp.com/emojis/1566217119149064313.gif" class="dc-emoji" alt="">
+                  <span id="label-card-pause">Pause</span>
+                </button>
+                <button onclick="triggerCardSkip()" class="btn-dc btn-secondary text-xs">
+                  <img src="https://cdn.discordapp.com/emojis/1565840667224051865.gif" class="dc-emoji" alt="">
+                  <span>Next</span>
+                </button>
+                <button onclick="toggleOthersPopup()" class="btn-dc btn-secondary text-xs">
+                  <img src="https://cdn.discordapp.com/emojis/1565839999063171185.gif" class="dc-emoji" alt="">
+                  <span>Others</span>
+                </button>
+              </div>
+
+              <!-- Collapsible "Others" Panel (Ephemerally shown on click) -->
+              <div id="others-panel-box" class="hidden mt-3 p-3 bg-[#1e1f22] rounded-lg border border-[#3f4147] space-y-2">
+                <div class="flex items-center justify-between text-xs text-[#949ba4] font-semibold border-b border-[#35373c] pb-1.5">
+                  <span>OTHERS PANEL (Private Ephemeral)</span>
+                  <button onclick="toggleOthersPopup()" class="text-[#da373c] hover:underline">Close ✕</button>
+                </div>
+                <div class="grid grid-cols-4 gap-1.5">
+                  <button onclick="noteOthers('Prev track')" class="btn-dc btn-secondary text-xs py-1.5 px-1">
+                    <img src="https://cdn.discordapp.com/emojis/1565870886823657553.gif" class="dc-emoji" alt=""> Prev
+                  </button>
+                  <button onclick="noteOthers('-10s Rewind')" class="btn-dc btn-secondary text-xs py-1.5 px-1">
+                    <img src="https://cdn.discordapp.com/emojis/1565870886823657553.gif" class="dc-emoji" alt=""> -10s
+                  </button>
+                  <button onclick="noteOthers('+10s Forward')" class="btn-dc btn-secondary text-xs py-1.5 px-1">
+                    <img src="https://cdn.discordapp.com/emojis/1565840667224051865.gif" class="dc-emoji" alt=""> +10s
+                  </button>
+                  <button onclick="noteOthers('Replay')" class="btn-dc btn-secondary text-xs py-1.5 px-1">
+                    <img src="https://cdn.discordapp.com/emojis/1566217092452065401.gif" class="dc-emoji" alt=""> Replay
+                  </button>
+                  <button onclick="noteOthers('Shuffle')" class="btn-dc btn-secondary text-xs py-1.5 px-1">
+                    <img src="https://cdn.discordapp.com/emojis/1566217143329104002.gif" class="dc-emoji" alt=""> Shuffle
+                  </button>
+                  <button onclick="noteOthers('Loop')" class="btn-dc btn-secondary text-xs py-1.5 px-1">
+                    <img src="https://cdn.discordapp.com/emojis/1566217143329104002.gif" class="dc-emoji" alt=""> Loop
+                  </button>
+                  <button onclick="switchTab('remix')" class="btn-dc btn-secondary text-xs py-1.5 px-1">
+                    <img src="https://cdn.discordapp.com/emojis/1566217201411817503.gif" class="dc-emoji" alt=""> Remix
+                  </button>
+                  <button onclick="noteOthers('Stop')" class="btn-dc btn-danger text-xs py-1.5 px-1">
+                    <img src="https://cdn.discordapp.com/emojis/1566217188308951190.gif" class="dc-emoji" alt=""> Stop
+                  </button>
+                </div>
+                <div class="pt-1">
+                  <button onclick="noteOthers('24/7 Mode Enabled')" class="btn-dc btn-success text-xs w-full py-1.5">
+                    <img src="https://cdn.discordapp.com/emojis/1566216873006080040.gif" class="dc-emoji" alt="">
+                    <span>24/7 Permanent Voice Streaming (Autoplay Locked)</span>
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================== -->
+      <!-- SECTION 5: REMIX AUDIO FX CONSOLE                             -->
+      <!-- ============================================================== -->
+      <section id="sec-remix" class="preview-section space-y-2">
+        <div class="flex items-start gap-4">
+          <div class="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center font-bold text-white shrink-0">U</div>
+          <div class="flex-1">
+            <div class="flex items-baseline gap-2">
+              <span class="font-semibold text-white text-sm">User</span>
+              <span class="text-[11px] text-[#949ba4]">Today at 05:16 AM</span>
+            </div>
+            <div class="text-sm mt-0.5 text-[#dbdee1]">
+              <code class="bg-[#1e1f22] px-1.5 py-0.5 rounded text-white font-mono text-xs">.remix</code>
+            </div>
+          </div>
+        </div>
+
+        <!-- Bot Remix Console -->
+        <div class="flex items-start gap-4">
+          <img src="https://cdn.discordapp.com/emojis/792704150843949056.gif" alt="Bot Avatar" class="w-10 h-10 rounded-full bg-[#1e1f22] p-0.5 border border-[#8a2be2] shrink-0">
+          <div class="flex-1">
+            <div class="flex items-baseline gap-2">
+              <span class="font-semibold text-[#8a2be2] text-sm">SHIZU MUSIC</span>
+              <span class="bot-tag">BOT</span>
+              <span class="text-[11px] text-[#949ba4]">Today at 05:16 AM</span>
+            </div>
+
+            <!-- Remix Embed with 4x5 Matrix Buttons -->
+            <div class="bg-[#2b2d31] border-l-4 border-purple-500 rounded-lg p-4 max-w-xl shadow-lg mt-1.5">
+              <div class="flex items-center justify-between text-sm font-bold text-white mb-1.5">
+                <span class="flex items-center gap-2">
+                  <img src="https://cdn.discordapp.com/emojis/1566217201411817503.gif" class="dc-emoji" alt="">
+                  <span>Remix Console</span>
+                </span>
+                <span class="text-xs bg-[#1e1f22] text-[#949ba4] px-2 py-0.5 rounded font-mono">FFmpeg Hardware DSP</span>
+              </div>
+              <p id="remix-status-text" class="text-xs text-[#dbdee1] mb-3 bg-[#1e1f22] p-2 rounded border border-[#35373c]">
+                Effects: <strong class="text-white">Crystal</strong> • Bass: <strong class="text-[#23a55a]">+6 dB</strong> • Vol: <strong>100%</strong>
+              </p>
+
+              <!-- 4x5 Grid Layout -->
+              <div class="space-y-1.5 text-xs">
+                <!-- Row 1 -->
+                <div class="grid grid-cols-4 gap-1.5">
+                  <button onclick="toggleFx(this, 'Speed')" class="btn-dc btn-secondary py-1.5 px-1">
+                    <img src="https://cdn.discordapp.com/emojis/1565840667224051865.gif" class="dc-emoji" alt=""> Speed
+                  </button>
+                  <button onclick="toggleFx(this, 'Slow')" class="btn-dc btn-secondary py-1.5 px-1">
+                    <img src="https://cdn.discordapp.com/emojis/1565870886823657553.gif" class="dc-emoji" alt=""> Slow
+                  </button>
+                  <button onclick="toggleFx(this, 'High')" class="btn-dc btn-secondary py-1.5 px-1">
+                    <img src="https://cdn.discordapp.com/emojis/1565840667224051865.gif" class="dc-emoji" alt=""> High
+                  </button>
+                  <button onclick="toggleFx(this, 'Deep')" class="btn-dc btn-secondary py-1.5 px-1">
+                    <img src="https://cdn.discordapp.com/emojis/1565870886823657553.gif" class="dc-emoji" alt=""> Low
+                  </button>
+                </div>
+                <!-- Row 2 -->
+                <div class="grid grid-cols-4 gap-1.5">
+                  <button onclick="cycleBass(this)" id="btn-remix-bass" class="btn-dc btn-success py-1.5 px-1">
+                    <img src="https://cdn.discordapp.com/emojis/1566216988546699354.gif" class="dc-emoji" alt=""> Bass +6
+                  </button>
+                  <button onclick="toggleFx(this, 'Deep EQ')" class="btn-dc btn-secondary py-1.5 px-1">
+                    <img src="https://cdn.discordapp.com/emojis/1566217064220463255.gif" class="dc-emoji" alt=""> Deep
+                  </button>
+                  <button onclick="toggleFx(this, 'LPF')" class="btn-dc btn-secondary py-1.5 px-1">
+                    <img src="https://cdn.discordapp.com/emojis/1566216988546699354.gif" class="dc-emoji" alt=""> LPF
+                  </button>
+                  <button onclick="toggleFx(this, 'HPF')" class="btn-dc btn-secondary py-1.5 px-1">
+                    <img src="https://cdn.discordapp.com/emojis/1566216988546699354.gif" class="dc-emoji" alt=""> HPF
+                  </button>
+                </div>
+                <!-- Row 3 -->
+                <div class="grid grid-cols-4 gap-1.5">
+                  <button onclick="toggleFx(this, 'Echo')" class="btn-dc btn-secondary py-1.5 px-1">
+                    <img src="https://cdn.discordapp.com/emojis/1566216923635515492.gif" class="dc-emoji" alt=""> Echo
+                  </button>
+                  <button onclick="toggleFx(this, 'Reverb')" class="btn-dc btn-secondary py-1.5 px-1">
+                    <img src="https://cdn.discordapp.com/emojis/1566216923635515492.gif" class="dc-emoji" alt=""> Reverb
+                  </button>
+                  <button onclick="toggleFx(this, 'Stutter')" class="btn-dc btn-secondary py-1.5 px-1">
+                    <img src="https://cdn.discordapp.com/emojis/1566217143329104002.gif" class="dc-emoji" alt=""> Stutter
+                  </button>
+                  <button onclick="cycleVol(this)" id="btn-remix-vol" class="btn-dc btn-secondary py-1.5 px-1">
+                    <img src="https://cdn.discordapp.com/emojis/1566216988546699354.gif" class="dc-emoji" alt=""> Vol 100%
+                  </button>
+                </div>
+                <!-- Row 4 -->
+                <div class="grid grid-cols-4 gap-1.5">
+                  <button onclick="toggleFx(this, 'Crystal')" class="btn-dc btn-success py-1.5 px-1">
+                    <img src="https://cdn.discordapp.com/emojis/1566217201411817503.gif" class="dc-emoji" alt=""> Crystal
+                  </button>
+                  <button onclick="toggleFx(this, 'Spatial 3D')" class="btn-dc btn-secondary py-1.5 px-1">
+                    <img src="https://cdn.discordapp.com/emojis/1566217064220463255.gif" class="dc-emoji" alt=""> Spatial
+                  </button>
+                  <button onclick="toggleFx(this, '8D Audio')" class="btn-dc btn-secondary py-1.5 px-1">
+                    <img src="https://cdn.discordapp.com/emojis/1566217064220463255.gif" class="dc-emoji" alt=""> 8D Audio
+                  </button>
+                  <button onclick="toggleFx(this, 'Atmos')" class="btn-dc btn-secondary py-1.5 px-1">
+                    <img src="https://cdn.discordapp.com/emojis/1566216923635515492.gif" class="dc-emoji" alt=""> Atmos
+                  </button>
+                </div>
+                <!-- Row 5 -->
+                <div class="grid grid-cols-4 gap-1.5">
+                  <button onclick="toggleFx(this, 'Lofi Chill')" class="btn-dc btn-secondary py-1.5 px-1">
+                    <img src="https://cdn.discordapp.com/emojis/1566217064220463255.gif" class="dc-emoji" alt=""> Lofi
+                  </button>
+                  <button onclick="toggleFx(this, 'Karaoke')" class="btn-dc btn-secondary py-1.5 px-1">
+                    <img src="https://cdn.discordapp.com/emojis/1566216923635515492.gif" class="dc-emoji" alt=""> Karaoke
+                  </button>
+                  <button onclick="clearAllFx()" class="btn-dc btn-danger py-1.5 px-1">
+                    <img src="https://cdn.discordapp.com/emojis/1566217188308951190.gif" class="dc-emoji" alt=""> Clear FX
+                  </button>
+                  <button onclick="alert('Remix console allows you to apply real-time DSP effects without restarting your stream!')" class="btn-dc btn-primary py-1.5 px-1">
+                    <img src="https://cdn.discordapp.com/emojis/1565867959958642729.gif" class="dc-emoji" alt=""> Help
+                  </button>
+                </div>
+              </div>
+
+              <div class="mt-3 text-[11px] text-[#949ba4] border-t border-[#35373c] pt-2">
+                Limiter on (stops bass boost clipping) • Real-time stream rebuild
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================== -->
+      <!-- SECTION 6: SEARCH & QUEUE                                      -->
+      <!-- ============================================================== -->
+      <section id="sec-queue" class="preview-section space-y-4">
+        <!-- Search Prompt -->
+        <div class="flex items-start gap-4">
+          <div class="w-10 h-10 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center font-bold text-white shrink-0">U</div>
+          <div class="flex-1">
+            <div class="flex items-baseline gap-2">
+              <span class="font-semibold text-white text-sm">User</span>
+              <span class="text-[11px] text-[#949ba4]">Today at 05:17 AM</span>
+            </div>
+            <div class="text-sm mt-0.5 text-[#dbdee1]">
+              <code class="bg-[#1e1f22] px-1.5 py-0.5 rounded text-white font-mono text-xs">.search believer imagine dragons</code>
+            </div>
+          </div>
+        </div>
+
+        <!-- Search Platform Select -->
+        <div class="flex items-start gap-4">
+          <img src="https://cdn.discordapp.com/emojis/792704150843949056.gif" alt="Bot Avatar" class="w-10 h-10 rounded-full bg-[#1e1f22] p-0.5 border border-[#8a2be2] shrink-0">
+          <div class="flex-1">
+            <div class="flex items-baseline gap-2">
+              <span class="font-semibold text-[#8a2be2] text-sm">SHIZU MUSIC</span>
+              <span class="bot-tag">BOT</span>
+              <span class="text-[11px] text-[#949ba4]">Today at 05:17 AM</span>
+            </div>
+
+            <!-- Platform Select Card -->
+            <div class="bg-[#2b2d31] border-l-4 border-red-500 rounded-lg p-4 max-w-xl shadow-lg mt-1.5">
+              <div class="font-bold text-white text-sm flex items-center gap-2 mb-1">
+                <img src="https://cdn.discordapp.com/emojis/1566216923635515492.gif" class="dc-emoji" alt="">
+                <span>Select a platform to search from:</span>
+              </div>
+              <p class="text-xs text-[#949ba4] mb-3">Click a button below to choose your audio source.</p>
+              <div class="flex gap-2">
+                <button class="btn-dc btn-danger text-xs">
+                  <img src="https://cdn.discordapp.com/emojis/1565841055574790277.gif" class="dc-emoji" alt="">
+                  <span>YouTube</span>
+                </button>
+                <button class="btn-dc btn-secondary text-xs">
+                  <span>🟠 SoundCloud</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Queue View Embed -->
+        <div class="flex items-start gap-4">
+          <img src="https://cdn.discordapp.com/emojis/792704150843949056.gif" alt="Bot Avatar" class="w-10 h-10 rounded-full bg-[#1e1f22] p-0.5 border border-[#8a2be2] shrink-0">
+          <div class="flex-1">
+            <div class="flex items-baseline gap-2">
+              <span class="font-semibold text-[#8a2be2] text-sm">SHIZU MUSIC</span>
+              <span class="bot-tag">BOT</span>
+              <span class="text-[11px] text-[#949ba4]">Today at 05:18 AM</span>
+            </div>
+
+            <div class="bg-[#2b2d31] border-l-4 border-[#8a2be2] rounded-lg p-4 max-w-xl shadow-lg mt-1.5">
+              <div class="font-bold text-white text-sm flex items-center gap-2 mb-1">
+                <img src="https://cdn.discordapp.com/emojis/1566216988546699354.gif" class="dc-emoji" alt="">
+                <span>Current Queue</span>
+              </div>
+              <p class="text-xs text-[#949ba4] mb-3">List of upcoming songs in this voice room.</p>
+              <div class="space-y-1.5 text-xs text-[#dbdee1] font-mono bg-[#1e1f22] p-3 rounded border border-[#35373c]">
+                <p>1. <span class="text-white font-sans">Imagine Dragons - Believer</span> (03:24) [Link]</p>
+                <p>2. <span class="text-white font-sans">The Weeknd - Blinding Lights</span> (03:20) [Link]</p>
+                <p>3. <span class="text-white font-sans">Post Malone - Sunflower</span> (02:38) [Link]</p>
+                <p>4. <span class="text-white font-sans">Ed Sheeran - Shape of You</span> (03:53) [Link]</p>
+              </div>
+              <div class="mt-2 text-[11px] text-[#949ba4] flex items-center justify-between">
+                <span>Total 4 tracks in queue</span>
+                <span>Page 1/1</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============================================================== -->
+      <!-- SECTION 7: ERRORS, COOLDOWNS & PREFIX NOTICES                  -->
+      <!-- ============================================================== -->
+      <section id="sec-errors" class="preview-section space-y-3">
+        <!-- Prefix Updated Success Notice -->
+        <div class="flex items-start gap-4">
+          <img src="https://cdn.discordapp.com/emojis/792704150843949056.gif" alt="Bot Avatar" class="w-10 h-10 rounded-full bg-[#1e1f22] p-0.5 border border-[#8a2be2] shrink-0">
+          <div class="flex-1">
+            <div class="flex items-baseline gap-2">
+              <span class="font-semibold text-[#8a2be2] text-sm">SHIZU MUSIC</span>
+              <span class="bot-tag">BOT</span>
+              <span class="text-[11px] text-[#949ba4]">Today at 05:19 AM</span>
+            </div>
+
+            <!-- Prefix Embed -->
+            <div class="bg-[#2b2d31] border-l-4 border-[#23a55a] rounded-lg p-3 max-w-xl shadow mt-1">
+              <div class="text-xs font-bold text-white mb-1">Prefix Updated</div>
+              <div class="text-xs text-[#dbdee1] flex items-start gap-2">
+                <img src="https://cdn.discordapp.com/emojis/1565839926241788178.gif" class="dc-emoji mt-0.5" alt="">
+                <span>Successfully updated server prefix to <code class="bg-[#1e1f22] px-1 py-0.5 rounded text-white font-mono">!</code><br>You can now run commands using <code class="bg-[#1e1f22] px-1 py-0.5 rounded text-white font-mono">!play</code>, <code class="bg-[#1e1f22] px-1 py-0.5 rounded text-white font-mono">!help</code>, etc.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Cooldown Warning -->
+        <div class="flex items-start gap-4">
+          <img src="https://cdn.discordapp.com/emojis/792704150843949056.gif" alt="Bot Avatar" class="w-10 h-10 rounded-full bg-[#1e1f22] p-0.5 border border-[#8a2be2] shrink-0">
+          <div class="flex-1">
+            <div class="flex items-baseline gap-2">
+              <span class="font-semibold text-[#8a2be2] text-sm">SHIZU MUSIC</span>
+              <span class="bot-tag">BOT</span>
+              <span class="text-[11px] text-[#949ba4]">Today at 05:19 AM</span>
+            </div>
+
+            <div class="bg-[#2b2d31] border-l-4 border-yellow-500 rounded-lg p-3 max-w-xl shadow mt-1">
+              <div class="text-xs font-bold text-white mb-1">Cooldown</div>
+              <div class="text-xs text-[#dbdee1] flex items-start gap-2">
+                <img src="https://cdn.discordapp.com/emojis/1565853410702528604.gif" class="dc-emoji mt-0.5" alt="">
+                <span>Whoa, slow down there! You can run the command again in <strong>2.45</strong> seconds.</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Missing Permissions Notice -->
+        <div class="flex items-start gap-4">
+          <img src="https://cdn.discordapp.com/emojis/792704150843949056.gif" alt="Bot Avatar" class="w-10 h-10 rounded-full bg-[#1e1f22] p-0.5 border border-[#8a2be2] shrink-0">
+          <div class="flex-1">
+            <div class="flex items-baseline gap-2">
+              <span class="font-semibold text-[#8a2be2] text-sm">SHIZU MUSIC</span>
+              <span class="bot-tag">BOT</span>
+              <span class="text-[11px] text-[#949ba4]">Today at 05:20 AM</span>
+            </div>
+
+            <div class="bg-[#2b2d31] border-l-4 border-[#da373c] rounded-lg p-3 max-w-xl shadow mt-1">
+              <div class="text-xs font-bold text-white mb-1">Missing Permissions</div>
+              <div class="text-xs text-[#dbdee1] flex items-start gap-2">
+                <img src="https://cdn.discordapp.com/emojis/1565839892817117405.gif" class="dc-emoji mt-0.5" alt="">
+                <span>You lack the <strong>Manage Server</strong> permission to change the bot prefix!</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+    </div>
+  </main>
+
+  <!-- Interactive Client-side Script -->
+  <script>
+    // -------------------------------------------------------------
+    // Tab Switching Logic
+    // -------------------------------------------------------------
+    function switchTab(tabId) {
+      const sections = document.querySelectorAll('.preview-section');
+      const navBtns = document.querySelectorAll('.nav-item');
+
+      navBtns.forEach(btn => {
+        btn.classList.remove('bg-[#35373c]', 'text-white');
+        btn.classList.add('text-[#949ba4]');
+      });
+
+      const activeBtn = document.getElementById('tab-btn-' + tabId);
+      if (activeBtn) {
+        activeBtn.classList.add('bg-[#35373c]', 'text-white');
+        activeBtn.classList.remove('text-[#949ba4]');
+      }
+
+      if (tabId === 'all') {
+        sections.forEach(sec => sec.style.display = 'block');
+      } else {
+        sections.forEach(sec => sec.style.display = 'none');
+        const target = document.getElementById('sec-' + tabId);
+        if (target) target.style.display = 'block';
+      }
+    }
+
+    // -------------------------------------------------------------
+    // Help Menu Dynamic Catalog & Interactive Rendering
+    // -------------------------------------------------------------
+    const COMMAND_DATA = {
+      // Music
+      play: { cat: "music", desc: "Play any song name or URL from YouTube, Spotify or SoundCloud.", usage: "play <song title | link>", example: "play faded alan walker", aliases: "p", rules: "Must be in a voice channel." },
+      search: { cat: "music", desc: "Search songs on YouTube and select from top results interactively.", usage: "search <song name>", example: "search believer imagine dragons", aliases: "find", rules: "Must be in a voice channel." },
+      nowplaying: { cat: "music", desc: "View details of the current playing song with live controls.", usage: "nowplaying", example: "nowplaying", aliases: "np", rules: "Available to all listeners." },
+      join: { cat: "music", desc: "Connect the bot to your current voice channel.", usage: "join", example: "join", aliases: "connect, j", rules: "Must be in a voice channel." },
+      disconnect: { cat: "music", desc: "Disconnect the bot from voice and end the music session.", usage: "disconnect", example: "disconnect", aliases: "dc, leave, stop", rules: "Session author or admin only." },
+      // Queue
+      queue: { cat: "queue", desc: "Display all upcoming tracks in the server queue.", usage: "queue [page number]", example: "queue 1", aliases: "q", rules: "Available to all listeners." },
+      clearqueue: { cat: "queue", desc: "Remove all upcoming tracks from the queue while keeping current song.", usage: "clearqueue", example: "clearqueue", aliases: "cq, clear", rules: "Session author or admin only." },
+      shuffle: { cat: "queue", desc: "Randomly mix up the songs in the queue for surprise playback.", usage: "shuffle", example: "shuffle", aliases: "mix", rules: "Session author or admin only." },
+      loop: { cat: "queue", desc: "Toggle repeating the current song or entire queue.", usage: "loop [song | queue | off]", example: "loop song", aliases: "repeat", rules: "Session author or admin only." },
+      autoplay: { cat: "queue", desc: "Automatically find and play similar songs when queue ends.", usage: "autoplay", example: "autoplay", aliases: "auto", rules: "Session author or admin only." },
+      // Player
+      pause: { cat: "player", desc: "Temporarily pause the music playback.", usage: "pause", example: "pause", aliases: "halt", rules: "Session author or admin only." },
+      resume: { cat: "player", desc: "Continue playing the paused track.", usage: "resume", example: "resume", aliases: "unpause", rules: "Session author or admin only." },
+      skip: { cat: "player", desc: "Skip the current track and play the next song in queue.", usage: "skip", example: "skip", aliases: "s, next", rules: "Session author or admin only." },
+      stop: { cat: "player", desc: "Stop music playback immediately and clear the queue.", usage: "stop", example: "stop", aliases: "halt", rules: "Session author or admin only." },
+      seek: { cat: "player", desc: "Jump forward or backward to a specific percentage or time.", usage: "seek <percentage% | mm:ss>", example: "seek 50%", aliases: "jump", rules: "Session author or admin only." },
+      volume: { cat: "player", desc: "Adjust audio volume between 1% and 300% (default 100%).", usage: "volume <1-300>", example: "volume 120", aliases: "vol, v", rules: "Session author or admin only." },
+      "247": { cat: "player", desc: "Keep the bot staying inside your voice channel 24/7 uninterrupted.", usage: "247", example: "247", aliases: "stay, non-stop", rules: "Session author or admin only." },
+      // FX
+      remix: { cat: "fx", desc: "Open the interactive button panel to toggle audio filters.", usage: "remix", example: "remix", aliases: "effects, panel", rules: "Session author or admin only." },
+      fx: { cat: "fx", desc: "Apply instant audio presets like lofi, 8d, slowed, or nightcore.", usage: "fx <preset name | off>", example: "fx lofi", aliases: "preset", rules: "Session author or admin only." },
+      bass: { cat: "fx", desc: "Set bass boost gain in decibels (0 to 25 dB).", usage: "bass <0-25>", example: "bass 10", aliases: "bb, bassboost", rules: "Session author or admin only." },
+      filter: { cat: "fx", desc: "Enable or disable custom audio equalizer filters.", usage: "filter <enable | disable> [name]", example: "filter disable", aliases: "eq", rules: "Session author or admin only." },
+      // Settings
+      prefix: { cat: "settings", desc: "Check the active bot prefix in this server.", usage: "prefix", example: "prefix", aliases: "currentprefix", rules: "Available to all members." },
+      setprefix: { cat: "settings", desc: "Change the bot's command prefix for this server.", usage: "setprefix <new prefix>", example: "setprefix !", aliases: "changeprefix", rules: "Requires Manage Server permission." }
+    };
+
+    const CATEGORIES = ["home", "music", "queue", "player", "fx", "settings", "info"];
+    const CAT_META = {
+      home: { title: "command center", emoji: "https://cdn.discordapp.com/emojis/792704150843949056.gif" },
+      music: { title: "music commands", emoji: "https://cdn.discordapp.com/emojis/1566216923635515492.gif" },
+      queue: { title: "queue commands", emoji: "https://cdn.discordapp.com/emojis/1566216988546699354.gif" },
+      player: { title: "player controls", emoji: "https://cdn.discordapp.com/emojis/1566217064220463255.gif" },
+      fx: { title: "remix & fx commands", emoji: "https://cdn.discordapp.com/emojis/1566217201411817503.gif" },
+      settings: { title: "settings commands", emoji: "https://cdn.discordapp.com/emojis/1565839999063171185.gif" },
+      info: { title: "bot info & connectivity", emoji: "https://cdn.discordapp.com/emojis/1565867959958642729.gif" }
+    };
+
+    let currentHelpCat = "home";
+    let selectedHelpCmd = null;
+
+    function renderHelpView() {
+      const pane = document.getElementById("help-content-pane");
+      const cmdRow = document.getElementById("help-cmd-row");
+      const cmdSelect = document.getElementById("help-cmd-select");
+      const footer = document.getElementById("help-footer");
+      const idx = CATEGORIES.indexOf(currentHelpCat);
+
+      footer.innerHTML = `<img src="https://cdn.discordapp.com/emojis/1565867959958642729.gif" class="dc-emoji" alt=""> Section ${idx + 1}/7 • Requested by User`;
+
+      // Update Command Select Options
+      const cmdsInCat = Object.keys(COMMAND_DATA).filter(k => COMMAND_DATA[k].cat === currentHelpCat);
+      if (cmdsInCat.length > 0 && currentHelpCat !== 'home' && currentHelpCat !== 'info') {
+        cmdRow.style.display = 'block';
+        let opts = `<option value="">-- All ${currentHelpCat.toUpperCase()} Commands --</option>`;
+        cmdsInCat.forEach(c => {
+          opts += `<option value="${c}" ${selectedHelpCmd === c ? 'selected' : ''}>.${c} — ${COMMAND_DATA[c].desc.slice(0, 50)}</option>`;
+        });
+        cmdSelect.innerHTML = opts;
+      } else {
+        cmdRow.style.display = 'none';
+      }
+
+      // If Command detail is selected
+      if (selectedHelpCmd && COMMAND_DATA[selectedHelpCmd]) {
+        const c = COMMAND_DATA[selectedHelpCmd];
+        pane.innerHTML = `
+          <h2 class="text-base font-bold text-[#f2f3f5] flex items-center gap-2 mb-2">
+            <img src="https://cdn.discordapp.com/emojis/1566216923635515492.gif" class="dc-emoji-lg" alt="">
+            <span class="fancy-title">ᴄᴏᴍᴍᴀɴᴅ ʜᴇʟᴘ</span> • <code class="bg-[#1e1f22] px-1.5 py-0.5 rounded text-white font-mono text-sm">.${selectedHelpCmd}</code>
+          </h2>
+          <p class="text-sm text-[#dbdee1] flex items-start gap-2 mb-3">
+            <img src="https://cdn.discordapp.com/emojis/1565840667224051865.gif" class="dc-emoji mt-0.5" alt="">
+            <span>${c.desc}</span>
+          </p>
+          <div class="dc-separator"></div>
+          <div class="space-y-1.5 text-xs text-[#dbdee1] bg-[#1e1f22] p-3 rounded border border-[#35373c]">
+            <p><strong class="text-[#f2f3f5]">Usage:</strong> <code class="text-purple-400 font-mono">.${c.usage}</code></p>
+            <p><strong class="text-[#f2f3f5]">Example:</strong> <code class="text-green-400 font-mono">.${c.example}</code></p>
+            <p><strong class="text-[#f2f3f5]">Aliases:</strong> <code class="text-blue-300 font-mono">${c.aliases}</code></p>
+            <p><strong class="text-[#f2f3f5]">Permission / Rules:</strong> <span class="text-[#949ba4]">${c.rules}</span></p>
+          </div>
+          <div class="dc-separator"></div>
+          <p class="text-[11px] text-[#949ba4] flex items-center gap-1.5">
+            <img src="https://cdn.discordapp.com/emojis/1565867959958642729.gif" class="dc-emoji" alt="">
+            <span>Tip: You can also execute this command using slash: <code class="bg-[#1e1f22] px-1 rounded text-white font-mono">/${selectedHelpCmd}</code></span>
+          </p>
+        `;
+        return;
+      }
+
+      // Home Page
+      if (currentHelpCat === "home") {
+        pane.innerHTML = `
+          <h2 class="text-base font-bold text-[#f2f3f5] flex items-center gap-2 mb-1.5">
+            <img src="https://cdn.discordapp.com/emojis/792704150843949056.gif" class="dc-emoji-lg" alt="">
+            <span class="fancy-title">ꜱʜɪᴢᴜ ᴍᴜꜱɪᴄ ᴄᴏᴍᴍᴀɴᴅ ᴄᴇɴᴛᴇʀ</span>
+          </h2>
+          <div class="space-y-1 text-xs text-[#dbdee1]">
+            <p class="flex items-start gap-2">
+              <img src="https://cdn.discordapp.com/emojis/1565840667224051865.gif" class="dc-emoji mt-0.5" alt="">
+              <span>Enjoy crystal-clear 24/7 music streaming with lag-free high quality audio.</span>
+            </p>
+            <p class="flex items-start gap-2">
+              <img src="https://cdn.discordapp.com/emojis/1565840667224051865.gif" class="dc-emoji mt-0.5" alt="">
+              <span>Prefix: <code class="bg-[#1e1f22] px-1 rounded text-white font-mono">.</code> or Slash <code class="bg-[#1e1f22] px-1 rounded text-white font-mono">/</code> · Start playing with <code class="bg-[#1e1f22] px-1 rounded text-white font-mono">.play &lt;song title&gt;</code>.</span>
+            </p>
+          </div>
+
+          <div class="dc-separator"></div>
+
+          <h3 class="text-xs font-bold text-[#f2f3f5] flex items-center gap-2 mb-1.5">
+            <img src="https://cdn.discordapp.com/emojis/1565867959958642729.gif" class="dc-emoji" alt="">
+            <span class="fancy-title">Qᴜɪᴄᴋ ꜱᴛᴀᴛɪꜱᴛɪᴄꜱ</span>
+          </h3>
+          <div class="grid grid-cols-2 gap-2 text-xs text-[#dbdee1] bg-[#1e1f22] p-2.5 rounded border border-[#35373c]">
+            <div><strong>Latency:</strong> <code class="text-green-400 font-mono">24 ms</code></div>
+            <div><strong>Active Servers:</strong> <code class="text-white font-mono">42</code></div>
+            <div><strong>Total Commands:</strong> <code class="text-purple-300 font-mono">23</code></div>
+            <div><strong>Voice Streams:</strong> <code class="text-blue-400 font-mono">Lavalink 4.2</code></div>
+          </div>
+
+          <div class="dc-separator"></div>
+
+          <h3 class="text-xs font-bold text-[#f2f3f5] flex items-center gap-2 mb-1.5">
+            <img src="https://cdn.discordapp.com/emojis/1565839999063171185.gif" class="dc-emoji" alt="">
+            <span class="fancy-title">ᴇxᴘʟᴏʀᴇ ᴄᴀᴛᴇɢᴏʀɪᴇꜱ</span>
+          </h3>
+          <div class="space-y-1 text-xs text-[#dbdee1]">
+            <p class="flex items-center gap-2"><img src="https://cdn.discordapp.com/emojis/1566216923635515492.gif" class="dc-emoji" alt=""> <strong>Music</strong> — Play songs, search YouTube & view live track info</p>
+            <p class="flex items-center gap-2"><img src="https://cdn.discordapp.com/emojis/1566216988546699354.gif" class="dc-emoji" alt=""> <strong>Queue</strong> — Manage track order, clear, loop, shuffle & autoplay</p>
+            <p class="flex items-center gap-2"><img src="https://cdn.discordapp.com/emojis/1566217064220463255.gif" class="dc-emoji" alt=""> <strong>Player Controls</strong> — Pause, resume, skip, seek, volume & 24/7 mode</p>
+            <p class="flex items-center gap-2"><img src="https://cdn.discordapp.com/emojis/1566217201411817503.gif" class="dc-emoji" alt=""> <strong>Remix & FX</strong> — Real-time audio filters, bassboost, lofi & 8D audio</p>
+          </div>
+        `;
+        return;
+      }
+
+      // Info Page
+      if (currentHelpCat === "info") {
+        pane.innerHTML = `
+          <h2 class="text-base font-bold text-[#f2f3f5] flex items-center gap-2 mb-1.5">
+            <img src="https://cdn.discordapp.com/emojis/1565867959958642729.gif" class="dc-emoji-lg" alt="">
+            <span class="fancy-title">ʙᴏᴛ ɪɴꜰᴏʀᴍᴀᴛɪᴏɴ & ᴄᴏɴɴᴇᴄᴛɪᴠɪᴛʏ</span>
+          </h2>
+          <div class="space-y-1 text-xs text-[#dbdee1]">
+            <p class="flex items-center gap-2"><img src="https://cdn.discordapp.com/emojis/1565839926241788178.gif" class="dc-emoji" alt=""> <strong>Status:</strong> Operational (24/7 Autoplay Active)</p>
+            <p class="flex items-center gap-2"><img src="https://cdn.discordapp.com/emojis/1565840667224051865.gif" class="dc-emoji" alt=""> <strong>Audio Node:</strong> Lavalink v4.2 + YouTube OAuth Refresh</p>
+            <p class="flex items-center gap-2"><img src="https://cdn.discordapp.com/emojis/1565840667224051865.gif" class="dc-emoji" alt=""> <strong>Gateway Ping:</strong> 24 ms</p>
+            <p class="flex items-center gap-2"><img src="https://cdn.discordapp.com/emojis/1565840667224051865.gif" class="dc-emoji" alt=""> <strong>Developers:</strong> viper_391, toxic_391</p>
+          </div>
+          <div class="dc-separator"></div>
+          <p class="text-xs text-[#949ba4]">Need help setting up or have feedback? Use the Support Server or Invite Bot buttons below!</p>
+        `;
+        return;
+      }
+
+      // Category Commands List Page
+      let cmdListHtml = '';
+      cmdsInCat.forEach(c => {
+        cmdListHtml += `
+          <div class="flex items-start gap-2 py-1 border-b border-[#35373c] last:border-0">
+            <img src="https://cdn.discordapp.com/emojis/1565840667224051865.gif" class="dc-emoji mt-0.5" alt="">
+            <div>
+              <code class="bg-[#1e1f22] px-1 py-0.5 rounded text-white font-mono font-bold text-xs">.${c}</code>
+              <span class="text-xs text-[#dbdee1] ml-1.5">— ${COMMAND_DATA[c].desc}</span>
+            </div>
+          </div>
+        `;
+      });
+
+      const meta = CAT_META[currentHelpCat];
+      pane.innerHTML = `
+        <h2 class="text-base font-bold text-[#f2f3f5] flex items-center gap-2 mb-1">
+          <img src="${meta.emoji}" class="dc-emoji-lg" alt="">
+          <span class="fancy-title">${meta.title}</span>
+        </h2>
+        <p class="text-xs text-[#949ba4] mb-3">Pick any command from the dropdown below to see full usage syntax & examples.</p>
+        <div class="dc-separator"></div>
+        <div class="space-y-1 max-h-56 overflow-y-auto pr-1">
+          ${cmdListHtml}
+        </div>
+      `;
+    }
+
+    function onCategorySelect(val) {
+      currentHelpCat = val;
+      selectedHelpCmd = null;
+      renderHelpView();
+    }
+
+    function onCommandSelect(val) {
+      selectedHelpCmd = val || null;
+      renderHelpView();
+    }
+
+    function navHelp(action) {
+      if (action === 'home') {
+        currentHelpCat = 'home';
+        selectedHelpCmd = null;
+      } else if (action === 'prev') {
+        const idx = CATEGORIES.indexOf(currentHelpCat);
+        currentHelpCat = CATEGORIES[Math.max(0, idx - 1)];
+        selectedHelpCmd = null;
+      } else if (action === 'next') {
+        const idx = CATEGORIES.indexOf(currentHelpCat);
+        currentHelpCat = CATEGORIES[Math.min(CATEGORIES.length - 1, idx + 1)];
+        selectedHelpCmd = null;
+      } else if (action === 'close') {
+        document.getElementById('sec-help').style.display = 'none';
+        return;
+      }
+      document.getElementById('help-cat-select').value = currentHelpCat;
+      renderHelpView();
+    }
+
+    // -------------------------------------------------------------
+    // Player Card Interactive Functions
+    // -------------------------------------------------------------
+    let cardPaused = false;
+    let cardAuto = false;
+
+    function toggleCardPause() {
+      cardPaused = !cardPaused;
+      const btn = document.getElementById('btn-card-pause');
+      const label = document.getElementById('label-card-pause');
+      const icon = document.getElementById('icon-card-pause');
+      const note = document.getElementById('player-card-note');
+
+      if (cardPaused) {
+        label.innerText = 'Play';
+        icon.src = 'https://cdn.discordapp.com/emojis/1566217092452065401.gif';
+        btn.classList.remove('btn-primary');
+        btn.classList.add('btn-success');
+        note.innerHTML = `<img src="https://cdn.discordapp.com/emojis/1566217119149064313.gif" class="dc-emoji" alt=""> <span>Paused by session author @User.</span>`;
+      } else {
+        label.innerText = 'Pause';
+        icon.src = 'https://cdn.discordapp.com/emojis/1566217119149064313.gif';
+        btn.classList.remove('btn-success');
+        btn.classList.add('btn-primary');
+        note.innerHTML = `<img src="https://cdn.discordapp.com/emojis/1566217092452065401.gif" class="dc-emoji" alt=""> <span>Resumed by session author @User.</span>`;
+      }
+    }
+
+    function toggleCardAuto() {
+      cardAuto = !cardAuto;
+      const btn = document.getElementById('btn-card-auto');
+      const note = document.getElementById('player-card-note');
+      if (cardAuto) {
+        btn.classList.remove('btn-secondary');
+        btn.classList.add('btn-success');
+        note.innerHTML = `<img src="https://cdn.discordapp.com/emojis/1565839926241788178.gif" class="dc-emoji" alt=""> <span>Autoplay enabled by session author @User.</span>`;
+      } else {
+        btn.classList.remove('btn-success');
+        btn.classList.add('btn-secondary');
+        note.innerHTML = `<img src="https://cdn.discordapp.com/emojis/1565839892817117405.gif" class="dc-emoji" alt=""> <span>Autoplay disabled by session author @User.</span>`;
+      }
+    }
+
+    function triggerCardSkip() {
+      const note = document.getElementById('player-card-note');
+      note.innerHTML = `<img src="https://cdn.discordapp.com/emojis/1565840667224051865.gif" class="dc-emoji" alt=""> <span>Skipped to next track by session author @User.</span>`;
+    }
+
+    function toggleOthersPopup() {
+      const p = document.getElementById('others-panel-box');
+      p.classList.toggle('hidden');
+    }
+
+    function noteOthers(act) {
+      const note = document.getElementById('player-card-note');
+      note.innerHTML = `<img src="https://cdn.discordapp.com/emojis/1565867959958642729.gif" class="dc-emoji" alt=""> <span>Action: <strong>${act}</strong> executed by @User.</span>`;
+    }
+
+    // -------------------------------------------------------------
+    // Remix Console Interactive Functions
+    // -------------------------------------------------------------
+    let activeFx = new Set(['Crystal']);
+    let bassLevel = 6;
+    let volLevel = 100;
+
+    function updateRemixStatus() {
+      const list = Array.from(activeFx).join(', ') || 'off';
+      document.getElementById('remix-status-text').innerHTML =
+        `Effects: <strong class="text-white">${list}</strong> • Bass: <strong class="text-[#23a55a]">+${bassLevel} dB</strong> • Vol: <strong>${volLevel}%</strong>`;
+    }
+
+    function toggleFx(btn, name) {
+      if (activeFx.has(name)) {
+        activeFx.delete(name);
+        btn.classList.remove('btn-success');
+        btn.classList.add('btn-secondary');
+      } else {
+        activeFx.add(name);
+        btn.classList.remove('btn-secondary');
+        btn.classList.add('btn-success');
+      }
+      updateRemixStatus();
+    }
+
+    function cycleBass(btn) {
+      const stages = [0, 6, 12, 18, 25];
+      let idx = stages.indexOf(bassLevel);
+      bassLevel = stages[(idx + 1) % stages.length];
+      btn.innerHTML = `<img src="https://cdn.discordapp.com/emojis/1566216988546699354.gif" class="dc-emoji" alt=""> Bass +${bassLevel}`;
+      if (bassLevel > 0) {
+        btn.classList.remove('btn-secondary');
+        btn.classList.add('btn-success');
+      } else {
+        btn.classList.remove('btn-success');
+        btn.classList.add('btn-secondary');
+      }
+      updateRemixStatus();
+    }
+
+    function cycleVol(btn) {
+      const stages = [100, 150, 200, 250, 300];
+      let idx = stages.indexOf(volLevel);
+      volLevel = stages[(idx + 1) % stages.length];
+      btn.innerHTML = `<img src="https://cdn.discordapp.com/emojis/1566216988546699354.gif" class="dc-emoji" alt=""> Vol ${volLevel}%`;
+      if (volLevel > 100) {
+        btn.classList.remove('btn-secondary');
+        btn.classList.add('btn-success');
+      } else {
+        btn.classList.remove('btn-success');
+        btn.classList.add('btn-secondary');
+      }
+      updateRemixStatus();
+    }
+
+    function clearAllFx() {
+      activeFx.clear();
+      bassLevel = 0;
+      volLevel = 100;
+      document.querySelectorAll('#sec-remix button').forEach(b => {
+        b.classList.remove('btn-success');
+        b.classList.add('btn-secondary');
+      });
+      document.getElementById('btn-remix-bass').innerHTML = `<img src="https://cdn.discordapp.com/emojis/1566216988546699354.gif" class="dc-emoji" alt=""> Bass`;
+      document.getElementById('btn-remix-vol').innerHTML = `<img src="https://cdn.discordapp.com/emojis/1566216988546699354.gif" class="dc-emoji" alt=""> Vol 100%`;
+      updateRemixStatus();
+    }
+
+    // Initialize Help View on Page Load
+    renderHelpView();
+  </script>
+</body>
+</html>
